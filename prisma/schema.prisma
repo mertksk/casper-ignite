@@ -1,0 +1,68 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Project {
+  id                String             @id @default(cuid())
+  title             String
+  description       String
+  tokenSymbol       String
+  tokenSupply       Int
+  ownershipPercent  Float
+  creatorAddress    String
+  tokenContractHash String?
+  tokenStatus       ProjectTokenStatus @default(PENDING)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  metrics ProjectMetric?
+  orders  ProjectOrder[]
+}
+
+model ProjectMetric {
+  id             String @id @default(cuid())
+  projectId      String @unique
+  currentPrice   Float  @default(0)
+  marketCap      Float  @default(0)
+  liquidityUsd   Float  @default(0)
+  totalInvestors Int    @default(0)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model ProjectOrder {
+  id            String    @id @default(cuid())
+  projectId     String
+  wallet        String
+  side          OrderSide
+  tokenAmount   Float
+  pricePerToken Float
+  createdAt     DateTime  @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+}
+
+enum ProjectTokenStatus {
+  PENDING
+  DEPLOYED
+  FAILED
+}
+
+enum OrderSide {
+  BUY
+  SELL
+}
