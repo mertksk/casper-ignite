@@ -3,6 +3,7 @@ import { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/db";
 import { projectListQuerySchema, type ProjectListQuery, type ProjectCreateInput, type OrderCreateInput } from "@/lib/dto";
 import { deployProjectToken } from "@/lib/casper";
+import { bondingCurveService } from "./bonding-curve-service";
 
 type ProjectInclude = Prisma.ProjectGetPayload<{
   include: { metrics: true };
@@ -24,6 +25,14 @@ const mapProject = (project: ProjectInclude) => ({
   creatorAddress: project.creatorAddress,
   tokenStatus: project.tokenStatus,
   createdAt: project.createdAt.toISOString(),
+
+  // New fields
+  marketLevel: project.marketLevel,
+  category: project.category,
+  roadmap: project.roadmap,
+  fundingGoal: project.fundingGoal,
+  approvedAt: project.approvedAt?.toISOString() ?? null,
+
   metrics: {
     currentPrice: project.metrics?.currentPrice ?? 0,
     marketCap: project.metrics?.marketCap ?? 0,
@@ -81,6 +90,11 @@ export const projectService = {
           orderBy: { createdAt: "desc" },
           take: 25,
         },
+        priceHistory: {
+          where: { interval: "1h" },
+          orderBy: { timestamp: "asc" },
+          take: 48, // Last 48 hours
+        },
       },
     });
     if (!project) return null;
@@ -95,16 +109,27 @@ export const projectService = {
         pricePerToken: order.pricePerToken,
         createdAt: order.createdAt.toISOString(),
       })),
+      priceHistory: project.priceHistory.map((price) => ({
+        timestamp: price.timestamp.toISOString(),
+        open: price.open,
+        high: price.high,
+        low: price.low,
+        close: price.close,
+        volume: price.volume,
+      })),
     };
   },
 
   async createProject(input: ProjectCreateInput) {
+    // Step 1: Deploy CEP-18 token contract
     const contractHash = await deployProjectToken({
       symbol: input.tokenSymbol,
       totalSupply: input.tokenSupply,
       projectName: input.title,
+      creatorPublicKey: input.creatorAddress,
     });
 
+    // Step 2: Create project with all new fields
     const project = await prisma.project.create({
       data: {
         title: input.title,
@@ -115,6 +140,17 @@ export const projectService = {
         creatorAddress: input.creatorAddress,
         tokenContractHash: contractHash,
         tokenStatus: contractHash ? "DEPLOYED" : "PENDING",
+
+        // New fields
+        category: input.category as Prisma.ProjectCreateInput["category"],
+        roadmap: input.roadmap,
+        fundingGoal: input.fundingGoal,
+        marketLevel: "PRE_MARKET", // All new projects start in pre-market
+
+        // Note: platformFeeHash and liquidityPoolHash should be set
+        // after payment deploys are sent and confirmed
+        // For now, they remain null until payment flow is implemented
+
         metrics: {
           create: {
             currentPrice: 0,
@@ -125,6 +161,14 @@ export const projectService = {
         },
       },
       include: projectWithMetrics.include,
+    });
+
+    // Step 3: Initialize bonding curve
+    await bondingCurveService.initialize({
+      projectId: project.id,
+      initialPrice: 0.001, // Starting price: 0.001 CSPR per token
+      reserveRatio: 0.5, // Linear curve (medium steepness)
+      totalSupply: project.tokenSupply,
     });
 
     return mapProject(project);

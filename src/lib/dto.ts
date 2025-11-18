@@ -19,10 +19,25 @@ export const projectCreateSchema = z.object({
   description: z.string().min(30).max(2_000),
   tokenSymbol: z
     .string()
-    .regex(/^[A-Z0-9]{3,8}$/, "Simge 3-8 karakter, büyük harf/rakam olmalıdır."),
+    .regex(/^[A-Z0-9]{3,8}$/, "Symbol must be 3-8 characters, uppercase letters/numbers only."),
   tokenSupply: z.coerce.number().int().min(1_000),
   ownershipPercent: z.coerce.number().min(1).max(100),
   creatorAddress: z.string().min(10),
+  // New required fields for enhanced project creation
+  category: z.enum([
+    "DEFI",
+    "GAMING",
+    "NFT",
+    "DAO",
+    "INFRASTRUCTURE",
+    "METAVERSE",
+    "SOCIAL",
+    "MARKETPLACE",
+    "TOOLS",
+    "OTHER",
+  ]),
+  roadmap: z.string().min(50).max(5_000, "Roadmap can be at most 5000 characters."),
+  fundingGoal: z.coerce.number().positive().min(100, "Goal must be at least 100 CSPR."),
 });
 
 export const orderCreateSchema = z.object({

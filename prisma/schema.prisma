@@ -24,11 +24,31 @@ model Project {
   creatorAddress    String
   tokenContractHash String?
   tokenStatus       ProjectTokenStatus @default(PENDING)
+
+  // New fields for enhanced project creation
+  marketLevel       MarketLevel        @default(PRE_MARKET)
+  category          ProjectCategory
+  roadmap           String             // Milestones and timeline
+  fundingGoal       Float              // Target CSPR to raise
+
+  // Payment tracking
+  platformFeeHash   String?            // Transaction hash for 600 CSPR platform fee
+  liquidityPoolHash String?            // Transaction hash for 1400 CSPR liquidity
+
+  // Approval tracking
+  approvedAt        DateTime?          // When promoted to APPROVED market
+  approvedBy        String?            // Admin wallet address who approved
+
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
-  metrics ProjectMetric?
-  orders  ProjectOrder[]
+  metrics           ProjectMetric?
+  orders            ProjectOrder[]
+  bondingCurve      BondingCurve?
+  marketCapHistory  MarketCapHistory[]
+  priceHistory      PriceHistory[]
+
+  @@unique([title])
 }
 
 model ProjectMetric {
@@ -56,6 +76,47 @@ model ProjectOrder {
   @@index([projectId, createdAt])
 }
 
+model BondingCurve {
+  id            String   @id @default(cuid())
+  projectId     String   @unique
+  initialPrice  Float    // Starting price per token
+  reserveRatio  Float    // Curve steepness (0-1)
+  currentSupply Float    @default(0) // Tokens sold so far
+  reserveBalance Float   @default(0) // CSPR in reserve (1400 initially)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model MarketCapHistory {
+  id         String   @id @default(cuid())
+  projectId  String
+  marketCap  Float    // Market cap in USD at time of recording
+  recordedAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, recordedAt])
+}
+
+model PriceHistory {
+  id         String   @id @default(cuid())
+  projectId  String
+  open       Float    // Opening price in CSPR
+  high       Float    // Highest price in CSPR
+  low        Float    // Lowest price in CSPR
+  close      Float    // Closing price in CSPR
+  volume     Float    // Trading volume
+  timestamp  DateTime @default(now())
+  interval   String   // Time interval: "1m", "5m", "15m", "1h", "4h", "1d"
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, timestamp])
+  @@index([projectId, interval, timestamp])
+}
+
 enum ProjectTokenStatus {
   PENDING
   DEPLOYED
@@ -65,4 +126,22 @@ enum ProjectTokenStatus {
 enum OrderSide {
   BUY
   SELL
+}
+
+enum MarketLevel {
+  PRE_MARKET // Level 1: New projects start here
+  APPROVED   // Level 2: Promoted after meeting criteria
+}
+
+enum ProjectCategory {
+  DEFI
+  GAMING
+  NFT
+  DAO
+  INFRASTRUCTURE
+  METAVERSE
+  SOCIAL
+  MARKETPLACE
+  TOOLS
+  OTHER
 }

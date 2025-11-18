@@ -4,6 +4,7 @@ import { projectService } from "@/server/services/project-service";
 import { Card, CardContent } from "@/components/ui/card";
 import { ProjectOrders } from "@/components/projects/project-orders";
 import { ProjectOrderForm } from "@/components/projects/project-order-form";
+import { PriceChart } from "@/components/charts/price-chart";
 
 type PageProps = {
   params: { id: string };
@@ -12,7 +13,7 @@ type PageProps = {
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const project = await projectService.get(params.id);
   if (!project) {
-    return { title: "Proje bulunamadı" };
+    return { title: "Project not found" };
   }
   return {
     title: `${project.title} · ${project.tokenSymbol}`,
@@ -46,11 +47,11 @@ export default async function ProjectDetailPage({ params }: PageProps) {
                 </dd>
               </div>
               <div className="rounded-2xl bg-brand-50/80 p-3 text-center shadow-sm">
-                <dt className="text-xs uppercase tracking-wide text-brand-500">Sahiplik</dt>
+                <dt className="text-xs uppercase tracking-wide text-brand-500">Ownership</dt>
                 <dd className="text-lg font-semibold">%{project.ownershipPercent}</dd>
               </div>
               <div className="rounded-2xl bg-brand-50/80 p-3 text-center shadow-sm">
-                <dt className="text-xs uppercase tracking-wide text-brand-500">Kurucu</dt>
+                <dt className="text-xs uppercase tracking-wide text-brand-500">Founder</dt>
                 <dd className="text-lg font-semibold">{project.creatorAddress}</dd>
               </div>
             </dl>
@@ -59,10 +60,10 @@ export default async function ProjectDetailPage({ params }: PageProps) {
 
         <Card className="border-4 border-brand-100 bg-white/90 shadow-cartoon-pop">
           <CardContent className="space-y-3 p-6">
-            <h2 className="text-xl font-semibold text-brand-800">Piyasa Bilgisi</h2>
+            <h2 className="text-xl font-semibold text-brand-800">Market Snapshot</h2>
             <ul className="space-y-2 text-brand-700">
               <li className="flex items-center justify-between text-sm">
-                <span>Fiyat</span>
+                <span>Price</span>
                 <strong>${project.metrics.currentPrice.toFixed(2)}</strong>
               </li>
               <li className="flex items-center justify-between text-sm">
@@ -70,17 +71,20 @@ export default async function ProjectDetailPage({ params }: PageProps) {
                 <strong>${project.metrics.marketCap.toLocaleString()}</strong>
               </li>
               <li className="flex items-center justify-between text-sm">
-                <span>Likidite</span>
+                <span>Liquidity</span>
                 <strong>${project.metrics.liquidityUsd.toLocaleString()}</strong>
               </li>
               <li className="flex items-center justify-between text-sm">
-                <span>Yatırımcı</span>
+                <span>Investors</span>
                 <strong>{project.metrics.totalInvestors.toLocaleString()}</strong>
               </li>
             </ul>
           </CardContent>
         </Card>
       </section>
+
+      {/* Price Chart - Binance Style */}
+      <PriceChart data={project.priceHistory} tokenSymbol={project.tokenSymbol} />
 
       <div className="grid gap-6 lg:grid-cols-[1.2fr,0.8fr]">
         <ProjectOrders orders={project.orders} />

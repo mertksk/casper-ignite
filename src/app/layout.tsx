@@ -24,16 +24,16 @@ const baloo = Baloo_2({
 
 export const metadata: Metadata = {
   title: {
-    default: `${publicRuntime.appName} · Casper tabanlı kitle fonlaması`,
+    default: `${publicRuntime.appName} · Casper-powered crowdfunding`,
     template: `%s · ${publicRuntime.appName}`,
   },
   description:
-    "Casper Ignite, girişimlerin token tabanlı hisse tekliflerini listeleyip yatırımcılarla buluşturduğu, dijital menkul kıymet portalıdır.",
+    "Casper Ignite is a digital securities portal where ventures list token-based equity offerings and meet investors.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="tr" className="bg-background">
+    <html lang="en" className="bg-background">
       <body className={`${geistSans.variable} ${geistMono.variable} ${baloo.variable} antialiased`}>
         <Providers>
           <div className="flex min-h-screen flex-col">

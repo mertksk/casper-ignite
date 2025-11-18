@@ -14,7 +14,7 @@ export function ProjectOrders({ orders }: { orders: Order[] }) {
     return (
       <Card className="border-4 border-dashed border-brand-200/70 bg-white/70">
         <CardContent className="py-6 text-center text-brand-600">
-          Henüz alış/satış emri yok.
+          No buy/sell orders yet.
         </CardContent>
       </Card>
     );
@@ -23,9 +23,9 @@ export function ProjectOrders({ orders }: { orders: Order[] }) {
   return (
     <Card className="border-4 border-brand-100 bg-white/90 shadow-cartoon-pop">
       <CardHeader>
-        <p className="text-base font-semibold text-brand-700">Market Emirleri</p>
+        <p className="text-base font-semibold text-brand-700">Market Orders</p>
         <p className="text-sm text-brand-600">
-          Gerçekleşen son 25 alış/satış işlemi görüntülenir.
+          Displays the latest 25 buy/sell executions.
         </p>
       </CardHeader>
       <CardContent className="space-y-2">
@@ -40,10 +40,10 @@ export function ProjectOrders({ orders }: { orders: Order[] }) {
                   order.side === "BUY" ? "text-risk-neutral" : "text-risk-danger"
                 }
               >
-                {order.side === "BUY" ? "Alış" : "Satış"}
+                {order.side === "BUY" ? "Buy" : "Sell"}
               </span>
               <span className="text-xs text-brand-500">
-                {new Date(order.createdAt).toLocaleString("tr-TR", {
+                {new Date(order.createdAt).toLocaleString("en-US", {
                   dateStyle: "short",
                   timeStyle: "short",
                 })}

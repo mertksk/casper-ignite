@@ -21,7 +21,7 @@ async function fetchProjects(filters: ProjectFeedFilters, cursor?: string | null
 
   const response = await fetch(`/api/projects?${params.toString()}`);
   if (!response.ok) {
-    throw new Error("Projeler alınamadı.");
+    throw new Error("Failed to fetch projects.");
   }
   return (await response.json()) as ProjectListResponse;
 }
@@ -73,11 +73,11 @@ export function ProjectFeed({ initial }: { initial?: ProjectListResponse }) {
             onClick={() => query.fetchNextPage()}
             disabled={query.isFetchingNextPage}
           >
-            {query.isFetchingNextPage ? "Yükleniyor..." : "Daha fazla göster"}
+            {query.isFetchingNextPage ? "Loading..." : "Show more"}
           </Button>
         ) : (
           <p className="text-sm text-muted-foreground">
-            {query.isFetching ? "Güncelleniyor..." : "Listelenecek başka proje yok."}
+            {query.isFetching ? "Refreshing..." : "No more projects to list."}
           </p>
         )}
       </div>

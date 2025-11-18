@@ -2,30 +2,30 @@ import { Metadata } from "next";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 
 export const metadata: Metadata = {
-  title: "Metodoloji",
-  description: "Casper Ignite üzerinde tokenize girişimlerin nasıl modellendiğini anlatır.",
+  title: "Methodology",
+  description: "Explains how tokenized ventures are modeled on Casper Ignite.",
 };
 
 const steps = [
   {
-    title: "1. Proje Tanımı",
+    title: "1. Project Definition",
     detail:
-      "Kurucu, başlık, detaylı açıklama ve token parametrelerini (simge, toplam arz, sahiplik yüzdesi) girer.",
+      "The founder enters the title, detailed description, and token parameters (symbol, total supply, ownership share).",
   },
   {
-    title: "2. Token İhracı",
+    title: "2. Token Issuance",
     detail:
-      "Portal, Casper RPC üzerinden CEP-18 contract deploy işlemini tetikler ve proje ile eşler.",
+      "The portal triggers the CEP-18 contract deployment over Casper RPC and associates it with the project.",
   },
   {
-    title: "3. Piyasa Verisi",
+    title: "3. Market Data",
     detail:
-      "Alım/satım emirleri ProjectOrder tablosuna kaydedilir; metrik servisi fiyat, market cap ve likiditeyi günceller.",
+      "Buy/sell orders are stored in the ProjectOrder table; the metrics service refreshes price, market cap, and liquidity.",
   },
   {
-    title: "4. Yatırımcı Şeffaflığı",
+    title: "4. Investor Transparency",
     detail:
-      "Her proje sayfası arz, sahiplik yüzdesi, kurucu adresi ve emir defterini aynı ekranda sunar.",
+      "Each project page surfaces supply, ownership share, founder address, and the order book in a single view.",
   },
 ];
 
@@ -34,12 +34,12 @@ export default function MethodologyPage() {
     <div className="space-y-8">
       <header>
         <p className="text-sm uppercase tracking-wide text-muted-foreground">
-          Casper Ignite · Metodoloji
+          Casper Ignite · Methodology
         </p>
-        <h1 className="mt-2 text-3xl font-semibold">Tokenize Girişimler Nasıl Çalışır?</h1>
+        <h1 className="mt-2 text-3xl font-semibold">How Do Tokenized Ventures Work?</h1>
         <p className="mt-2 text-muted-foreground">
-          Ignite, geleneksel hisse dilimini CEP-18 token ile temsil eder. Aşağıdaki adımlar, portalın
-          uçtan uca süreçlerini özetler.
+          Ignite represents a traditional equity slice as a CEP-18 token. The steps below summarize
+          the portal's end-to-end workflows.
         </p>
       </header>
 
@@ -59,16 +59,16 @@ export default function MethodologyPage() {
       <section>
         <Card className="border-4 border-brand-100 bg-white/90 shadow-cartoon-pop">
           <CardHeader>
-            <p className="font-semibold text-brand-800">Etik Notlar</p>
+            <p className="font-semibold text-brand-800">Ethical Notes</p>
           </CardHeader>
           <CardContent className="space-y-3 text-sm text-brand-700">
             <p>
-              Ignite’de listelenen tokenlar, menkul kıymet temsil eden deneysel ürünlerdir. Her
-              kurucu, yasal çerçeve ve yatırımcı uygunluğundan sorumludur.
+              Tokens listed on Ignite are experimental instruments that represent securities. Every
+              founder is responsible for legal compliance and investor suitability.
             </p>
             <p>
-              Portal hiçbir zaman koordineli alım/satım çağrısı yapmaz; metrikler bilgi amaçlıdır ve
-              yatırım tavsiyesi değildir.
+              The portal never coordinates buy/sell calls; metrics are informational only and do not
+              constitute investment advice.
             </p>
           </CardContent>
         </Card>

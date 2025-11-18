@@ -38,7 +38,7 @@ export async function enforceRateLimit(request: NextRequest, bucket = "global") 
     const [countResult] = (await tx.exec()) ?? [];
     const count = Array.isArray(countResult) ? Number(countResult[1]) : Number(countResult);
     if (count > max) {
-      throw new RateLimitError("Çok fazla istek alındı. Lütfen biraz sonra tekrar deneyin.");
+      throw new RateLimitError("Too many requests. Please try again later.");
     }
     return;
   }
@@ -52,7 +52,7 @@ export async function enforceRateLimit(request: NextRequest, bucket = "global") 
 
   bucketState.hits += 1;
   if (bucketState.hits > max) {
-    throw new RateLimitError("Çok fazla istek alındı. Lütfen biraz sonra tekrar deneyin.");
+    throw new RateLimitError("Too many requests. Please try again later.");
   }
 }
 

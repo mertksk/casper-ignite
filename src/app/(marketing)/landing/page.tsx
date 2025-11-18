@@ -3,8 +3,8 @@ export default function LandingPage() {
     <div className="space-y-4">
       <h1 className="text-4xl font-semibold">Casper Ignite</h1>
       <p className="text-lg text-muted-foreground">
-        Bu sayfa ürün vizyonunu açıklar. Varsayılan rota feed olmasına rağmen, paydaşlar için bu
-        kısa tanıtım sayfası tutulur.
+        This page outlines the product vision. The main route defaults to the feed, but we keep this
+        short explainer available for stakeholders.
       </p>
     </div>
   );

@@ -23,7 +23,7 @@ export function ProjectCard({ project }: { project: ProjectSummary }) {
             </Link>
           </div>
           <span className="rounded-full bg-white/80 px-3 py-1 text-xs font-semibold text-brand-700 shadow-sm">
-            {project.tokenStatus === "DEPLOYED" ? "Canlı" : "Deploy Sürecinde"}
+            {project.tokenStatus === "DEPLOYED" ? "Live" : "Deploying"}
           </span>
         </div>
         <p className="text-sm text-brand-600 line-clamp-3">{project.description}</p>
@@ -36,7 +36,7 @@ export function ProjectCard({ project }: { project: ProjectSummary }) {
             <dd className="text-lg font-semibold">{project.tokenSupply.toLocaleString()}</dd>
           </div>
           <div className="rounded-2xl bg-white/80 p-3 text-center shadow-sm">
-            <dt className="text-xs uppercase tracking-wide text-brand-500">Sahiplik</dt>
+            <dt className="text-xs uppercase tracking-wide text-brand-500">Ownership</dt>
             <dd className="text-lg font-semibold">%{project.ownershipPercent}</dd>
           </div>
           <div className="rounded-2xl bg-white/80 p-3 text-center shadow-sm">
@@ -46,7 +46,7 @@ export function ProjectCard({ project }: { project: ProjectSummary }) {
             </dd>
           </div>
           <div className="rounded-2xl bg-white/80 p-3 text-center shadow-sm">
-            <dt className="text-xs uppercase tracking-wide text-brand-500">Yatırımcı</dt>
+            <dt className="text-xs uppercase tracking-wide text-brand-500">Investors</dt>
             <dd className="text-lg font-semibold">{investors.toLocaleString()}</dd>
           </div>
         </dl>
@@ -54,14 +54,14 @@ export function ProjectCard({ project }: { project: ProjectSummary }) {
 
       <CardFooter className="flex items-center justify-between">
         <p className="text-sm font-semibold text-brand-700">
-          Piyasa Değeri:{" "}
+          Market Cap:{" "}
           <span className="text-brand-900">${marketCap.toLocaleString()}</span>
         </p>
         <Link
           href={`/projects/${project.id}`}
           className="rounded-full bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-cartoon-pop hover:bg-brand-400"
         >
-          Detay
+          Details
         </Link>
       </CardFooter>
     </Card>

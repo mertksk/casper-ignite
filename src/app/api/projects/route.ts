@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
     const data = await projectService.list(searchParams);
     return NextResponse.json(data);
   } catch {
-    return NextResponse.json({ error: "Listeleme sırasında hata oluştu." }, { status: 400 });
+    return NextResponse.json({ error: "An error occurred while listing projects." }, { status: 400 });
   }
 }
 

@@ -11,7 +11,7 @@ export function SiteFooter() {
           © {new Date().getFullYear()} {publicRuntime.appName}
         </p>
         <p className="text-xs uppercase tracking-[0.3em] text-brand-500">
-          Kaynak: On-chain veriler · Deterministik kurallar
+          Source: On-chain data · Deterministic rules
         </p>
       </div>
     </footer>

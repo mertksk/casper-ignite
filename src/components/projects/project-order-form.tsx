@@ -30,10 +30,10 @@ export function ProjectOrderForm({ projectId }: Props) {
       }),
     });
     if (!response.ok) {
-      setMessage("Emir kaydedilirken hata oluştu.");
+      setMessage("Failed to record the order.");
       return;
     }
-    setMessage("Emir sisteme alındı. Likidite metriği güncellendi.");
+    setMessage("Order accepted. Liquidity metrics updated.");
     setWallet("");
     setTokenAmount(0);
     setPricePerToken(0);
@@ -42,15 +42,15 @@ export function ProjectOrderForm({ projectId }: Props) {
   return (
     <Card className="border-4 border-brand-100 bg-white/90 shadow-cartoon-pop">
       <CardHeader>
-        <p className="text-base font-semibold text-brand-700">Token Al / Sat</p>
+        <p className="text-base font-semibold text-brand-700">Buy / Sell Tokens</p>
         <p className="text-sm text-brand-600">
-          Market emri girerek piyasa değeri ve likidite hesaplarının güncellenmesine katkı sağla.
+          Submit a market order to help keep market cap and liquidity calculations up to date.
         </p>
       </CardHeader>
       <CardContent>
         <form className="space-y-4" onSubmit={handleSubmit}>
           <Input
-            placeholder="Cüzdan adresi"
+            placeholder="Wallet address"
             value={wallet}
             onChange={(event) => setWallet(event.target.value)}
           />
@@ -61,7 +61,7 @@ export function ProjectOrderForm({ projectId }: Props) {
               className="flex-1 rounded-full"
               onClick={() => setSide("BUY")}
             >
-              Alış
+              Buy
             </Button>
             <Button
               type="button"
@@ -69,19 +69,19 @@ export function ProjectOrderForm({ projectId }: Props) {
               className="flex-1 rounded-full"
               onClick={() => setSide("SELL")}
             >
-              Satış
+              Sell
             </Button>
           </div>
           <div className="grid gap-3 md:grid-cols-2">
             <Input
               type="number"
-              placeholder="Token miktarı"
+              placeholder="Token amount"
               value={tokenAmount}
               onChange={(event) => setTokenAmount(Number(event.target.value))}
             />
             <Input
               type="number"
-              placeholder="Token başı fiyat ($)"
+              placeholder="Price per token ($)"
               value={pricePerToken}
               onChange={(event) => setPricePerToken(Number(event.target.value))}
             />
@@ -90,7 +90,7 @@ export function ProjectOrderForm({ projectId }: Props) {
             type="submit"
             className="rounded-full bg-brand-500 text-white shadow-cartoon-pop hover:bg-brand-400"
           >
-            Emir Gönder
+            Submit Order
           </Button>
           {message && <p className="text-sm font-semibold text-brand-600">{message}</p>}
         </form>
