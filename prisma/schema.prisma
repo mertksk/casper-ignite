@@ -23,6 +23,7 @@ model Project {
   ownershipPercent  Float
   creatorAddress    String
   tokenContractHash String?
+  tokenPackageHash  String?
   tokenStatus       ProjectTokenStatus @default(PENDING)
 
   // New fields for enhanced project creation

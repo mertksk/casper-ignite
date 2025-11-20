@@ -5,7 +5,7 @@ import { z } from "zod";
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   NEXT_PUBLIC_APP_NAME: z.string().min(1).default("Casper Ignite"),
-  NEXT_PUBLIC_CHAIN_NAME: z.string().min(1).default("casper-mainnet"),
+  NEXT_PUBLIC_CHAIN_NAME: z.string().min(1).default("casper-test"),
   CSPR_RPC_URL_PRIMARY: z.string().url(),
   CSPR_RPC_URL_FALLBACK: z.string().url().optional(),
   DATABASE_URL: z.string().min(1),

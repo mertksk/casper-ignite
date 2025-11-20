@@ -23,6 +23,8 @@ const mapProject = (project: ProjectInclude) => ({
   tokenSupply: project.tokenSupply,
   ownershipPercent: project.ownershipPercent,
   creatorAddress: project.creatorAddress,
+  tokenContractHash: project.tokenContractHash,
+  tokenPackageHash: project.tokenPackageHash,
   tokenStatus: project.tokenStatus,
   createdAt: project.createdAt.toISOString(),
 
@@ -122,7 +124,7 @@ export const projectService = {
 
   async createProject(input: ProjectCreateInput) {
     // Step 1: Deploy CEP-18 token contract
-    const contractHash = await deployProjectToken({
+    const { contractHash, contractPackageHash } = await deployProjectToken({
       symbol: input.tokenSymbol,
       totalSupply: input.tokenSupply,
       projectName: input.title,
@@ -139,6 +141,7 @@ export const projectService = {
         ownershipPercent: input.ownershipPercent,
         creatorAddress: input.creatorAddress,
         tokenContractHash: contractHash,
+        tokenPackageHash: contractPackageHash ?? null,
         tokenStatus: contractHash ? "DEPLOYED" : "PENDING",
 
         // New fields

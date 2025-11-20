@@ -122,7 +122,9 @@ export async function GET(
 
     const project = trade.sellOrder.project;
 
-    if (!project.tokenContractHash) {
+    const tokenHashForTransfer = project.tokenPackageHash ?? project.tokenContractHash;
+
+    if (!tokenHashForTransfer) {
       return NextResponse.json(
         { error: "Token contract not deployed" },
         { status: 400 }
@@ -132,7 +134,7 @@ export async function GET(
     // Create unsigned deploy parameters
     const tokenAmount = (trade.tokenAmount * Math.pow(10, 9)).toString(); // Convert to smallest unit
     const deployParams = createTokenTransferParams(
-      project.tokenContractHash,
+      tokenHashForTransfer,
       trade.sellerWallet, // From seller
       trade.buyerWallet,  // To buyer
       tokenAmount
