@@ -14,7 +14,7 @@ const executeSchema = z.object({
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { tradeId: string } }
+  { params }: { params: Promise<{ tradeId: string }> }
 ) {
   const body = await request.json().catch(() => null);
   const parsed = executeSchema.safeParse(body);
@@ -26,10 +26,12 @@ export async function POST(
     );
   }
 
+  const { tradeId } = await params;
+
   try {
     // Get the trade
     const trade = await prisma.trade.findUnique({
-      where: { id: params.tradeId },
+      where: { id: tradeId },
       include: {
         buyOrder: {
           include: {
@@ -63,7 +65,7 @@ export async function POST(
 
     // Update trade status
     await prisma.trade.update({
-      where: { id: params.tradeId },
+      where: { id: tradeId },
       data: {
         blockchainHash: mockDeployHash,
         status: "EXECUTING",
@@ -92,11 +94,12 @@ export async function POST(
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { tradeId: string } }
+  { params }: { params: Promise<{ tradeId: string }> }
 ) {
   try {
+    const { tradeId } = await params;
     const trade = await prisma.trade.findUnique({
-      where: { id: params.tradeId },
+      where: { id: tradeId },
       include: {
         sellOrder: {
           include: {

@@ -4,9 +4,10 @@ import { projectIdSchema } from "@/lib/dto";
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const parsed = projectIdSchema.safeParse(params);
+  const awaitedParams = await params;
+  const parsed = projectIdSchema.safeParse(awaitedParams);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }

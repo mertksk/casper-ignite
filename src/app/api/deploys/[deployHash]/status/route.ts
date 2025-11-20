@@ -7,10 +7,11 @@ import { checkDeployStatus } from "@/lib/casper";
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { deployHash: string } }
+  { params }: { params: Promise<{ deployHash: string }> }
 ) {
   try {
-    const status = await checkDeployStatus(params.deployHash);
+    const { deployHash } = await params;
+    const status = await checkDeployStatus(deployHash);
     return NextResponse.json(status);
   } catch (error) {
     console.error("Error checking deploy status:", error);

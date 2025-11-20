@@ -12,7 +12,7 @@ const cancelSchema = z.object({
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { orderId: string } }
+  { params }: { params: Promise<{ orderId: string }> }
 ) {
   const body = await request.json().catch(() => null);
   const parsed = cancelSchema.safeParse(body);
@@ -24,8 +24,10 @@ export async function POST(
     );
   }
 
+  const { orderId } = await params;
+
   try {
-    await cancelOrder(params.orderId, parsed.data.wallet);
+    await cancelOrder(orderId, parsed.data.wallet);
     return NextResponse.json({ success: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to cancel order";

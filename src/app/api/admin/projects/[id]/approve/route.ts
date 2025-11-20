@@ -16,7 +16,7 @@ const approveSchema = z.object({
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const body = await request.json();
@@ -30,7 +30,7 @@ export async function POST(
     }
 
     const { adminWallet } = validation.data;
-    const projectId = params.id;
+    const { id: projectId } = await params;
 
     // Get project with market cap history
     const project = await prisma.project.findUnique({
@@ -139,10 +139,10 @@ export async function POST(
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const projectId = params.id;
+    const { id: projectId } = await params;
 
     const project = await prisma.project.findUnique({
       where: { id: projectId },

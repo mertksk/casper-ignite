@@ -21,19 +21,20 @@ const orderCreateSchema = z.object({
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const { searchParams } = new URL(request.url);
   const wallet = searchParams.get("wallet");
+  const { id: projectId } = await params;
 
   try {
     if (wallet) {
       // Get user's orders for this project
-      const orders = await getUserOrders(wallet, params.id);
+      const orders = await getUserOrders(wallet, projectId);
       return NextResponse.json({ orders });
     } else {
       // Get full order book
-      const orderBook = await getOrderBook(params.id);
+      const orderBook = await getOrderBook(projectId);
       return NextResponse.json(orderBook);
     }
   } catch (error) {
@@ -51,7 +52,7 @@ export async function GET(
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await enforceRateLimit(request, "project-order");
@@ -72,9 +73,11 @@ export async function POST(
     );
   }
 
+  const { id: projectId } = await params;
+
   try {
     const order = await createOrder(
-      params.id,
+      projectId,
       parsed.data.wallet,
       parsed.data.side,
       parsed.data.tokenAmount,
