@@ -6,11 +6,12 @@ import { TradingInterface } from "@/components/trading/TradingInterface";
 import { PriceChart } from "@/components/charts/price-chart";
 
 type PageProps = {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 };
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
-  const project = await projectService.get(params.id);
+  const { id } = await params;
+  const project = await projectService.get(id);
   if (!project) {
     return { title: "Project not found" };
   }
@@ -21,7 +22,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 }
 
 export default async function ProjectDetailPage({ params }: PageProps) {
-  const project = await projectService.get(params.id);
+  const { id } = await params;
+  const project = await projectService.get(id);
   if (!project) {
     notFound();
   }
