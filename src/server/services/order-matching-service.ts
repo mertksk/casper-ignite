@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
-import type { OrderSide, OrderStatus, TradeStatus } from "@prisma/client";
+import type { OrderSide, OrderStatus } from "@prisma/client";
 
 type Order = {
   id: string;
@@ -280,7 +280,7 @@ export async function getOrderBook(projectId: string) {
       orderBy: [
         { pricePerToken: "asc" },
         { createdAt: "asc" },
-      },
+      ],
       take: 20, // Top 20 asks
     }),
   ]);
