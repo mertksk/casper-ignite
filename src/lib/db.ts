@@ -6,7 +6,7 @@ declare global {
   var prisma: PrismaClient | undefined;
 }
 
-const logLevel = appConfig.isDev ? ["query", "info", "warn", "error"] : ["error"];
+const logLevel: ("query" | "info" | "warn" | "error")[] = appConfig.isDev ? ["query", "info", "warn", "error"] : ["error"];
 
 export const prisma =
   global.prisma ??

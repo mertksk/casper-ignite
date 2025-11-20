@@ -49,7 +49,7 @@ export function getCasperWalletProvider(options?: CasperWalletProviderOptions): 
   if (!providerFactory) return null;
 
   try {
-    return providerFactory(options);
+    return providerFactory(options) as CasperWalletProvider;
   } catch (error) {
     console.error("Error initializing Casper Wallet provider:", error);
     return null;

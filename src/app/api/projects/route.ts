@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     await enforceRateLimit(request, "project-create");
   } catch (error) {
     if (error instanceof RateLimitError) {
-      return NextResponse.json({ error: error.message }, { status: error.message }, { status: error.status });
+      return NextResponse.json({ error: error.message }, { status: error.status });
     }
     throw error;
   }

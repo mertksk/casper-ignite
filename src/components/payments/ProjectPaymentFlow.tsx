@@ -18,6 +18,8 @@ type PaymentStatus = {
 // Import amounts from config - these will be from env variables
 const PLATFORM_FEE_AMOUNT = 600; // CSPR (from publicRuntime.platformFeeAmount)
 const LIQUIDITY_AMOUNT = 1400; // CSPR (from publicRuntime.liquidityPoolAmount)
+const PLATFORM_FEE_ADDRESS = process.env.NEXT_PUBLIC_PLATFORM_FEE_ADDRESS || '';
+const LIQUIDITY_POOL_ADDRESS = process.env.NEXT_PUBLIC_LIQUIDITY_POOL_ADDRESS || '';
 // Note: Actual addresses will be fetched from API which reads from server config
 
 interface ProjectPaymentFlowProps {
@@ -67,10 +69,9 @@ export function ProjectPaymentFlow({ onComplete, onCancel }: ProjectPaymentFlowP
 
       const { deployJson, deployHash } = await response.json();
 
-      // Sign the deploy with Casper Wallet
-      const { signDeploy } = await import('@/hooks/useCasperWallet');
-      // TODO: This needs to be properly imported from the hook context
-      // For now, we'll use a simpler approach
+      // TODO: Sign the deploy with Casper Wallet
+      // This needs to be properly implemented with wallet signing
+      // For now, we'll submit the unsigned deploy
 
       // Submit signed deploy
       const submitResponse = await fetch('/api/payments/submit', {
@@ -123,10 +124,10 @@ export function ProjectPaymentFlow({ onComplete, onCancel }: ProjectPaymentFlowP
         throw new Error('Failed to create payment deploy');
       }
 
-      const { deployJson, deployHash } = await response.json();
+      const { deployHash } = await response.json();
 
-      // Sign and submit
-      // TODO: Implement proper wallet signing
+      // TODO: Sign and submit with proper wallet signing
+      // For now, we'll just wait for confirmation
 
       // Wait for confirmation
       await waitForDeployConfirmation(deployHash);

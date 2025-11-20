@@ -1,5 +1,5 @@
 import "server-only";
-import { Prisma } from "@/generated/prisma";
+import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { projectListQuerySchema, type ProjectListQuery, type ProjectCreateInput, type OrderCreateInput } from "@/lib/dto";
 import { deployProjectToken } from "@/lib/casper";
@@ -13,7 +13,7 @@ const projectWithMetrics = {
   include: {
     metrics: true,
   },
-} satisfies Prisma.ProjectInclude;
+} as const;
 
 const mapProject = (project: ProjectInclude) => ({
   id: project.id,
@@ -197,15 +197,15 @@ export const projectService = {
       const totalVolume = input.tokenAmount * input.pricePerToken;
       const newMarketCap =
         input.side === "BUY"
-          ? project.metrics.marketCap + totalVolume
-          : Math.max(project.metrics.marketCap - totalVolume, 0);
+          ? (project.metrics?.marketCap || 0) + totalVolume
+          : Math.max((project.metrics?.marketCap || 0) - totalVolume, 0);
 
       await tx.projectMetric.update({
         where: { projectId: input.projectId },
         data: {
           currentPrice: input.pricePerToken,
           marketCap: newMarketCap,
-          liquidityUsd: project.metrics.liquidityUsd + totalVolume * 0.1,
+          liquidityUsd: (project.metrics?.liquidityUsd || 0) + totalVolume * 0.1,
           totalInvestors: { increment: input.side === "BUY" ? 1 : 0 },
         },
       });

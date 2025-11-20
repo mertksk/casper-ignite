@@ -1,7 +1,7 @@
 'use client';
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { useForm, Resolver } from "react-hook-form";
 import { useState, useEffect } from "react";
 import { ProjectCreateInput, projectCreateSchema } from "@/lib/dto";
 import { Input } from "../ui/input";
@@ -13,7 +13,7 @@ import { useCasperWallet } from "@/hooks/useCasperWallet";
 export function ProjectCreateForm() {
   const { publicKey, isConnected } = useCasperWallet();
   const form = useForm<ProjectCreateInput>({
-    resolver: zodResolver(projectCreateSchema),
+    resolver: zodResolver(projectCreateSchema) as Resolver<ProjectCreateInput>,
     defaultValues: {
       title: "",
       description: "",

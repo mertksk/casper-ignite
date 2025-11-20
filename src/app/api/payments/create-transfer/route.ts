@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     const { deployJson, deployHash } = createCSPRTransferParams(
       fromPublicKey,
       toPublicKey,
-      amount
+      amount.toString()
     );
 
     return NextResponse.json({

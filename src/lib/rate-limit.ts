@@ -19,8 +19,8 @@ const memoryStore = new Map<
 export function getClientIp(request: NextRequest) {
   return (
     request.headers.get("x-forwarded-for") ??
-    request.ip ??
     request.headers.get("cf-connecting-ip") ??
+    request.headers.get("x-real-ip") ??
     "anonymous"
   );
 }

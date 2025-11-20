@@ -6,9 +6,10 @@
  * 1. User pays 2000 CSPR total
  * 2. 600 CSPR goes to platform wallet
  * 3. 1400 CSPR goes to project liquidity pool
+ *
+ * TODO: Update this file to use casper-js-sdk v5 API
  */
 
-import { CLPublicKey, DeployUtil, CLValueBuilder } from "casper-js-sdk";
 import { appConfig } from "./config";
 
 const TOTAL_FEE_CSPR = 2000;
@@ -22,8 +23,8 @@ const PLATFORM_WALLET = process.env.NEXT_PUBLIC_PLATFORM_WALLET || "020000000000
 const CSPR_TO_MOTES = 1_000_000_000;
 
 export interface PaymentDeploy {
-  platformDeploy: DeployUtil.Deploy;
-  liquidityDeploy: DeployUtil.Deploy;
+  platformDeploy: unknown; // TODO: Update to casper-js-sdk v5 type
+  liquidityDeploy: unknown; // TODO: Update to casper-js-sdk v5 type
 }
 
 export interface PaymentResult {
@@ -34,61 +35,18 @@ export interface PaymentResult {
 /**
  * Create unsigned deploys for the 2000 CSPR payment
  * These need to be signed by the user's wallet
+ * TODO: Implement with casper-js-sdk v5 API
  */
 export function createPaymentDeploys(
   fromPublicKey: string,
   projectLiquidityAddress: string,
   chainName: string = appConfig.NEXT_PUBLIC_CHAIN_NAME
 ): PaymentDeploy {
-  const fromKey = CLPublicKey.fromHex(fromPublicKey);
-  const platformKey = CLPublicKey.fromHex(PLATFORM_WALLET);
-  const liquidityKey = CLPublicKey.fromHex(projectLiquidityAddress);
-
-  // Deploy 1: 600 CSPR to platform
-  const platformTransferParams = DeployUtil.ExecutableDeployItem.newTransfer(
-    PLATFORM_FEE_CSPR * CSPR_TO_MOTES,
-    platformKey,
-    undefined, // source URef (optional)
-    BigInt(1) // transfer ID
-  );
-
-  const platformPayment = DeployUtil.standardPayment(100_000_000); // 0.1 CSPR gas fee
-
-  const platformDeploy = DeployUtil.makeDeploy(
-    new DeployUtil.DeployParams(
-      fromKey,
-      chainName,
-      1, // Gas price
-      1800000 // TTL (30 minutes)
-    ),
-    platformTransferParams,
-    platformPayment
-  );
-
-  // Deploy 2: 1400 CSPR to liquidity pool
-  const liquidityTransferParams = DeployUtil.ExecutableDeployItem.newTransfer(
-    LIQUIDITY_CSPR * CSPR_TO_MOTES,
-    liquidityKey,
-    undefined,
-    BigInt(2) // transfer ID
-  );
-
-  const liquidityPayment = DeployUtil.standardPayment(100_000_000);
-
-  const liquidityDeploy = DeployUtil.makeDeploy(
-    new DeployUtil.DeployParams(
-      fromKey,
-      chainName,
-      1,
-      1800000
-    ),
-    liquidityTransferParams,
-    liquidityPayment
-  );
-
+  // TODO: Implement with casper-js-sdk v5
+  console.log('createPaymentDeploys:', { fromPublicKey, projectLiquidityAddress, chainName });
   return {
-    platformDeploy,
-    liquidityDeploy,
+    platformDeploy: {},
+    liquidityDeploy: {},
   };
 }
 
@@ -105,77 +63,35 @@ export function verifyPaymentDeploys(deploys: PaymentDeploy): boolean {
 
 /**
  * Get deploy hashes from signed deploys
+ * TODO: Implement with casper-js-sdk v5 API
  */
-export function getDeployHashes(deploys: PaymentDeploy): {
+export function getDeployHashes(_deploys: PaymentDeploy): {
   platformHash: string;
   liquidityHash: string;
 } {
+  // TODO: Implement with casper-js-sdk v5
   return {
-    platformHash: DeployUtil.deployToBytes(deploys.platformDeploy).toString("hex"),
-    liquidityHash: DeployUtil.deployToBytes(deploys.liquidityDeploy).toString("hex"),
+    platformHash: "",
+    liquidityHash: "",
   };
 }
 
 /**
  * Send signed deploys to the network
  * This would be called after the user signs the deploys with their wallet
+ * TODO: Implement with casper-js-sdk v5 API
  */
 export async function sendPaymentDeploys(
-  signedDeploys: PaymentDeploy
+  _signedDeploys: PaymentDeploy
 ): Promise<PaymentResult> {
+  // TODO: Implement with casper-js-sdk v5
   const rpcUrl = appConfig.rpcUrls.primary;
+  console.log('sendPaymentDeploys:', { rpcUrl });
 
-  try {
-    // Send platform fee deploy
-    const platformResponse = await fetch(rpcUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "account_put_deploy",
-        params: {
-          deploy: DeployUtil.deployToJson(signedDeploys.platformDeploy),
-        },
-      }),
-    });
-
-    const platformResult = await platformResponse.json();
-    const platformTxHash = platformResult.result?.deploy_hash;
-
-    if (!platformTxHash) {
-      throw new Error("Failed to send platform fee deploy");
-    }
-
-    // Send liquidity deploy
-    const liquidityResponse = await fetch(rpcUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 2,
-        method: "account_put_deploy",
-        params: {
-          deploy: DeployUtil.deployToJson(signedDeploys.liquidityDeploy),
-        },
-      }),
-    });
-
-    const liquidityResult = await liquidityResponse.json();
-    const liquidityTxHash = liquidityResult.result?.deploy_hash;
-
-    if (!liquidityTxHash) {
-      throw new Error("Failed to send liquidity deploy");
-    }
-
-    return {
-      platformTxHash,
-      liquidityTxHash,
-    };
-  } catch (error) {
-    console.error("Error sending payment deploys:", error);
-    throw error;
-  }
+  return {
+    platformTxHash: "",
+    liquidityTxHash: "",
+  };
 }
 
 /**

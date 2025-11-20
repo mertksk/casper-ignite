@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
-import type { OrderSide, OrderStatus } from "@prisma/client";
+import type { OrderSide, OrderStatus } from "@/generated/prisma/client";
 
 type Order = {
   id: string;
