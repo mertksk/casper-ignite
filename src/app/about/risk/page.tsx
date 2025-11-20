@@ -39,7 +39,7 @@ export default function MethodologyPage() {
         <h1 className="mt-2 text-3xl font-semibold">How Do Tokenized Ventures Work?</h1>
         <p className="mt-2 text-muted-foreground">
           Ignite represents a traditional equity slice as a CEP-18 token. The steps below summarize
-          the portal's end-to-end workflows.
+          the portal&apos;s end-to-end workflows.
         </p>
       </header>
 
