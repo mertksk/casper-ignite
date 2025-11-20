@@ -2,8 +2,7 @@ import { notFound } from "next/navigation";
 import { Metadata } from "next";
 import { projectService } from "@/server/services/project-service";
 import { Card, CardContent } from "@/components/ui/card";
-import { ProjectOrders } from "@/components/projects/project-orders";
-import { ProjectOrderForm } from "@/components/projects/project-order-form";
+import { TradingInterface } from "@/components/trading/TradingInterface";
 import { PriceChart } from "@/components/charts/price-chart";
 
 type PageProps = {
@@ -86,10 +85,15 @@ export default async function ProjectDetailPage({ params }: PageProps) {
       {/* Price Chart - Binance Style */}
       <PriceChart data={project.priceHistory} tokenSymbol={project.tokenSymbol} />
 
-      <div className="grid gap-6 lg:grid-cols-[1.2fr,0.8fr]">
-        <ProjectOrders orders={project.orders} />
-        <ProjectOrderForm projectId={project.id} />
-      </div>
+      {/* Trading Interface with Order Book */}
+      <section>
+        <h2 className="mb-4 text-2xl font-semibold text-brand-800">Trading</h2>
+        <TradingInterface
+          projectId={project.id}
+          tokenSymbol={project.tokenSymbol}
+          currentPrice={project.metrics.currentPrice}
+        />
+      </section>
     </div>
   );
 }

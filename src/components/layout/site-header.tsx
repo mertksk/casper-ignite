@@ -17,8 +17,20 @@ const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || "Casper Ignite";
 export function SiteHeader() {
   const router = useRouter();
   const pathname = usePathname();
-  const { isConnected, publicKey, disconnect } = useCasperWallet();
+  const { isConnected, publicKey, connect, disconnect } = useCasperWallet();
   const [showDropdown, setShowDropdown] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+
+  const handleConnect = async () => {
+    try {
+      setIsConnecting(true);
+      await connect();
+    } catch (error) {
+      console.error("Connection error:", error);
+    } finally {
+      setIsConnecting(false);
+    }
+  };
 
   const scrollToWallet = () => {
     if (pathname !== "/") {
@@ -51,7 +63,8 @@ export function SiteHeader() {
     }
   };
 
-  const abbreviateKey = (key: string) => {
+  const abbreviateKey = (key: string | null | undefined) => {
+    if (!key || typeof key !== 'string') return '';
     if (key.length <= 16) return key;
     return `${key.slice(0, 6)}...${key.slice(-4)}`;
   };
@@ -116,7 +129,7 @@ export function SiteHeader() {
                       Connected Wallet
                     </p>
                     <p className="mt-1 truncate font-mono text-sm text-brand-800">
-                      {publicKey}
+                      {publicKey ? String(publicKey) : ''}
                     </p>
                   </div>
                   <div className="p-2">
@@ -139,11 +152,12 @@ export function SiteHeader() {
           </div>
         ) : (
           <Button
-            onClick={scrollToWallet}
+            onClick={handleConnect}
+            disabled={isConnecting}
             size="sm"
             className="rounded-full bg-brand-500 text-white shadow-cartoon-pop hover:bg-brand-600"
           >
-            Connect Wallet
+            {isConnecting ? 'Connecting...' : 'Connect Wallet'}
           </Button>
         )}
       </div>

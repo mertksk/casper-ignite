@@ -1,9 +1,58 @@
 import { NextRequest, NextResponse } from "next/server";
-import { orderCreateSchema } from "@/lib/dto";
-import { projectService } from "@/server/services/project-service";
+import { z } from "zod";
 import { enforceRateLimit, RateLimitError } from "@/lib/rate-limit";
+import {
+  createOrder,
+  getOrderBook,
+  getUserOrders,
+} from "@/server/services/order-matching-service";
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+const orderCreateSchema = z.object({
+  wallet: z.string().min(1, "Wallet address required"),
+  side: z.enum(["BUY", "SELL"]),
+  tokenAmount: z.number().positive("Token amount must be positive"),
+  pricePerToken: z.number().positive("Price must be positive"),
+});
+
+/**
+ * GET /api/projects/[id]/orders
+ * Get order book for a project
+ * Optional query param: ?wallet=<address> to filter by user's orders
+ */
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const { searchParams } = new URL(request.url);
+  const wallet = searchParams.get("wallet");
+
+  try {
+    if (wallet) {
+      // Get user's orders for this project
+      const orders = await getUserOrders(wallet, params.id);
+      return NextResponse.json({ orders });
+    } else {
+      // Get full order book
+      const orderBook = await getOrderBook(params.id);
+      return NextResponse.json(orderBook);
+    }
+  } catch (error) {
+    console.error("Error fetching orders:", error);
+    return NextResponse.json(
+      { error: "Failed to fetch orders" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * POST /api/projects/[id]/orders
+ * Create a new limit order
+ */
+export async function POST(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
   try {
     await enforceRateLimit(request, "project-order");
   } catch (error) {
@@ -14,15 +63,27 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   }
 
   const body = await request.json().catch(() => null);
-  const parsed = orderCreateSchema.safeParse({ ...body, projectId: params.id });
+  const parsed = orderCreateSchema.safeParse(body);
+
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return NextResponse.json(
+      { error: parsed.error.flatten() },
+      { status: 400 }
+    );
   }
 
   try {
-    const order = await projectService.createOrder(parsed.data);
+    const order = await createOrder(
+      params.id,
+      parsed.data.wallet,
+      parsed.data.side,
+      parsed.data.tokenAmount,
+      parsed.data.pricePerToken
+    );
+
     return NextResponse.json(order, { status: 201 });
-  } catch {
-    return NextResponse.json({ error: "Emir kaydedilemedi." }, { status: 400 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to create order";
+    return NextResponse.json({ error: message }, { status: 400 });
   }
 }

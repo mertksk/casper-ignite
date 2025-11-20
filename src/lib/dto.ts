@@ -38,6 +38,9 @@ export const projectCreateSchema = z.object({
   ]),
   roadmap: z.string().min(50).max(5_000, "Roadmap can be at most 5000 characters."),
   fundingGoal: z.coerce.number().positive().min(100, "Goal must be at least 100 CSPR."),
+  // Payment verification (required for production)
+  platformFeeHash: z.string().optional(), // Deploy hash for 600 CSPR platform fee
+  liquidityPoolHash: z.string().optional(), // Deploy hash for 1400 CSPR liquidity pool
 });
 
 export const orderCreateSchema = z.object({

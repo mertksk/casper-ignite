@@ -63,17 +63,24 @@ model ProjectMetric {
 }
 
 model ProjectOrder {
-  id            String    @id @default(cuid())
+  id            String      @id @default(cuid())
   projectId     String
   wallet        String
   side          OrderSide
-  tokenAmount   Float
-  pricePerToken Float
-  createdAt     DateTime  @default(now())
+  tokenAmount   Float       // Total tokens in order
+  pricePerToken Float       // Limit price per token in CSPR
+  filledAmount  Float       @default(0) // Tokens filled so far
+  status        OrderStatus @default(OPEN)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project    Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  buyTrades  Trade[] @relation("BuyOrders")
+  sellTrades Trade[] @relation("SellOrders")
 
+  @@index([projectId, status, side, pricePerToken])
   @@index([projectId, createdAt])
+  @@index([wallet, status])
 }
 
 model BondingCurve {
@@ -117,6 +124,32 @@ model PriceHistory {
   @@index([projectId, interval, timestamp])
 }
 
+model Trade {
+  id              String      @id @default(cuid())
+  projectId       String
+  buyOrderId      String
+  sellOrderId     String
+  buyerWallet     String
+  sellerWallet    String
+  tokenAmount     Float       // Amount of tokens traded
+  pricePerToken   Float       // Execution price per token in CSPR
+  totalValue      Float       // tokenAmount * pricePerToken
+  blockchainHash  String?     // Casper transfer deploy hash
+  status          TradeStatus @default(PENDING)
+  createdAt       DateTime    @default(now())
+  executedAt      DateTime?   // When blockchain transaction was confirmed
+  updatedAt       DateTime    @updatedAt
+
+  buyOrder  ProjectOrder @relation("BuyOrders", fields: [buyOrderId], references: [id])
+  sellOrder ProjectOrder @relation("SellOrders", fields: [sellOrderId], references: [id])
+
+  @@index([projectId, createdAt])
+  @@index([buyerWallet, createdAt])
+  @@index([sellerWallet, createdAt])
+  @@index([status])
+  @@index([blockchainHash])
+}
+
 enum ProjectTokenStatus {
   PENDING
   DEPLOYED
@@ -126,6 +159,20 @@ enum ProjectTokenStatus {
 enum OrderSide {
   BUY
   SELL
+}
+
+enum OrderStatus {
+  OPEN             // Order is active and can be matched
+  PARTIALLY_FILLED // Some tokens filled, remaining open
+  FILLED           // Completely filled
+  CANCELLED        // User cancelled
+}
+
+enum TradeStatus {
+  PENDING    // Trade matched, awaiting blockchain execution
+  EXECUTING  // Blockchain transaction submitted
+  CONFIRMED  // Blockchain transaction confirmed
+  FAILED     // Blockchain transaction failed
 }
 
 enum MarketLevel {

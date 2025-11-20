@@ -2,14 +2,16 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ProjectCreateInput, projectCreateSchema } from "@/lib/dto";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader } from "../ui/card";
+import { useCasperWallet } from "@/hooks/useCasperWallet";
 
 export function ProjectCreateForm() {
+  const { publicKey, isConnected } = useCasperWallet();
   const form = useForm<ProjectCreateInput>({
     resolver: zodResolver(projectCreateSchema),
     defaultValues: {
@@ -25,6 +27,13 @@ export function ProjectCreateForm() {
     },
   });
   const [message, setMessage] = useState<string | null>(null);
+
+  // Auto-fill creator address when wallet is connected
+  useEffect(() => {
+    if (isConnected && publicKey) {
+      form.setValue("creatorAddress", publicKey);
+    }
+  }, [isConnected, publicKey, form]);
 
   async function onSubmit(values: ProjectCreateInput) {
     setMessage(null);
@@ -58,26 +67,61 @@ export function ProjectCreateForm() {
       </CardHeader>
       <CardContent>
         <form className="space-y-4" onSubmit={form.handleSubmit(onSubmit)}>
-          <Input placeholder="Project title" {...form.register("title")} />
-          <Textarea
-            placeholder="Project description"
-            rows={4}
-            {...form.register("description")}
-          />
-          <div className="grid gap-4 md:grid-cols-3">
-            <Input placeholder="Token symbol" {...form.register("tokenSymbol")} />
-            <Input
-              type="number"
-              placeholder="Token supply"
-              {...form.register("tokenSupply", { valueAsNumber: true })}
-            />
-            <Input
-              type="number"
-              placeholder="Ownership %"
-              {...form.register("ownershipPercent", { valueAsNumber: true })}
-            />
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-brand-700">Project Title</label>
+            <Input placeholder="e.g., CasperSwap - Decentralized Exchange" {...form.register("title")} />
           </div>
-          <Input placeholder="Founder wallet address" {...form.register("creatorAddress")} />
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-brand-700">Project Description</label>
+            <Textarea
+              placeholder="Describe your project, its goals, and unique value proposition..."
+              rows={4}
+              {...form.register("description")}
+            />
+            <p className="text-xs text-brand-600">Minimum 30 characters</p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-brand-700">Token Symbol</label>
+              <Input placeholder="e.g., CSWAP" {...form.register("tokenSymbol")} />
+              <p className="text-xs text-brand-600">3-8 uppercase letters/numbers</p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-brand-700">Token Supply</label>
+              <Input
+                type="number"
+                placeholder="100000000"
+                {...form.register("tokenSupply", { valueAsNumber: true })}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-brand-700">Ownership %</label>
+              <Input
+                type="number"
+                placeholder="15"
+                {...form.register("ownershipPercent", { valueAsNumber: true })}
+              />
+              <p className="text-xs text-brand-600">1-100%</p>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-brand-700">Founder Wallet Address</label>
+            <Input
+              placeholder="Auto-filled when wallet connected"
+              {...form.register("creatorAddress")}
+              disabled={isConnected}
+              className={isConnected ? "bg-green-50 border-green-200" : ""}
+            />
+            {isConnected && publicKey && (
+              <p className="text-xs text-green-600">✓ Connected wallet address auto-filled</p>
+            )}
+            {!isConnected && (
+              <p className="text-xs text-brand-600">Connect your wallet to auto-fill this field</p>
+            )}
+          </div>
 
           <div className="space-y-2">
             <label className="text-sm font-medium text-brand-700">Project Category</label>
