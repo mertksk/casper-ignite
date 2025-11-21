@@ -54,6 +54,7 @@ export function createPaymentDeploys(
  * Verify payment deploys are correctly structured
  */
 export function verifyPaymentDeploys(deploys: PaymentDeploy): boolean {
+  void deploys;
   // TODO: Add verification logic
   // - Check amounts are correct
   // - Check recipient addresses
@@ -69,6 +70,7 @@ export function getDeployHashes(_deploys: PaymentDeploy): {
   platformHash: string;
   liquidityHash: string;
 } {
+  void _deploys;
   // TODO: Implement with casper-js-sdk v5
   return {
     platformHash: "",
@@ -82,11 +84,11 @@ export function getDeployHashes(_deploys: PaymentDeploy): {
  * TODO: Implement with casper-js-sdk v5 API
  */
 export async function sendPaymentDeploys(
-  _signedDeploys: PaymentDeploy
+  signedDeploys: PaymentDeploy
 ): Promise<PaymentResult> {
   // TODO: Implement with casper-js-sdk v5
   const rpcUrl = appConfig.rpcUrls.primary;
-  console.log('sendPaymentDeploys:', { rpcUrl });
+  console.log('sendPaymentDeploys:', { rpcUrl, signedDeploys });
 
   return {
     platformTxHash: "",
@@ -162,4 +164,5 @@ export const PAYMENT_CONFIG = {
   PLATFORM_FEE_CSPR,
   LIQUIDITY_CSPR,
   PLATFORM_WALLET,
+  CSPR_TO_MOTES,
 } as const;

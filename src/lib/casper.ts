@@ -1,6 +1,7 @@
 import "server-only";
 import { readFileSync } from "fs";
 import { join } from "path";
+import { createHash } from "crypto";
 import {
   Args,
   CLValue,
@@ -69,8 +70,9 @@ function readCep18Wasm(): Uint8Array {
     verifyWasmChecksum(bytes);
     return bytes;
   } catch (error) {
+    const reason = error instanceof Error ? error.message : "Unknown error";
     throw new Error(
-      "CEP-18 WASM not found at public/contracts/cep18.wasm. Download it from https://github.com/casper-ecosystem/cep18/releases and retry."
+      `CEP-18 WASM not found at public/contracts/cep18.wasm. Download it from https://github.com/casper-ecosystem/cep18/releases and retry. (${reason})`
     );
   }
 }
@@ -418,20 +420,25 @@ export async function getTokenBalance(
       client.queryLatestGlobalState(`hash-${cleanHash}`, ["balances", dictionaryKey])
     );
 
-    const value =
-      result.storedValue?.CLValue ??
-      result.stored_value?.CLValue ??
-      result.rawJSON?.stored_value?.CLValue;
+    const rawStoredValue =
+      (result as { storedValue?: unknown; stored_value?: unknown; rawJSON?: unknown }).storedValue ??
+      (result as { storedValue?: unknown; stored_value?: unknown; rawJSON?: unknown }).stored_value ??
+      (result as { storedValue?: unknown; stored_value?: unknown; rawJSON?: { stored_value?: unknown } }).rawJSON
+        ?.stored_value;
 
-    if (!value || !value.parsed) {
+    const value =
+      (rawStoredValue as { clValue?: unknown; CLValue?: unknown })?.clValue ??
+      (rawStoredValue as { clValue?: unknown; CLValue?: unknown })?.CLValue;
+
+    const parsedValue = (value as { parsed?: unknown })?.parsed;
+    if (!value || !parsedValue) {
       return "0";
     }
 
-    const parsed = value.parsed;
-    if (typeof parsed === "string") return parsed;
-    if (parsed?.u256) return parsed.u256.toString();
-    if (parsed?.u128) return parsed.u128.toString();
-    return String(parsed);
+    if (typeof parsedValue === "string") return parsedValue;
+    if ((parsedValue as { u256?: unknown })?.u256) return (parsedValue as { u256: string }).u256.toString();
+    if ((parsedValue as { u128?: unknown })?.u128) return (parsedValue as { u128: string }).u128.toString();
+    return String(parsedValue);
   } catch (error) {
     console.error("Error getting token balance:", error);
     return "0";
@@ -474,10 +481,7 @@ function validateTokenParams(input: DeployInput): number {
 function verifyWasmChecksum(bytes: Uint8Array) {
   const expected = process.env.CEP18_WASM_SHA256?.trim();
   if (!expected) return;
-  // Lazy require to avoid bundling crypto in client
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const crypto = require("crypto") as typeof import("crypto");
-  const digest = crypto.createHash("sha256").update(bytes).digest("hex");
+  const digest = createHash("sha256").update(bytes).digest("hex");
   if (digest !== expected) {
     throw new Error(
       `CEP-18 WASM checksum mismatch. Expected ${expected}, computed ${digest}. Refresh the wasm file.`

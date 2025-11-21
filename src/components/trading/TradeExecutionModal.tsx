@@ -39,31 +39,29 @@ export function TradeExecutionModal({ tradeId, onClose, onComplete }: TradeExecu
   const [deployHash, setDeployHash] = useState<string | null>(null);
 
   useEffect(() => {
-    if (tradeId) {
-      loadTradeDetails();
-    }
-  }, [tradeId]);
-
-  const loadTradeDetails = async () => {
     if (!tradeId) return;
 
-    setLoading(true);
-    try {
-      const response = await fetch(`/api/trades/${tradeId}/execute`);
-      if (!response.ok) {
-        throw new Error('Failed to load trade details');
-      }
+    const loadTradeDetails = async () => {
+      setLoading(true);
+      try {
+        const response = await fetch(`/api/trades/${tradeId}/execute`);
+        if (!response.ok) {
+          throw new Error('Failed to load trade details');
+        }
 
-      const data = await response.json();
-      setTrade(data.trade);
-      setDeployParams(data.deployParams);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load trade');
-      setStatus('error');
-    } finally {
-      setLoading(false);
-    }
-  };
+        const data = await response.json();
+        setTrade(data.trade);
+        setDeployParams(data.deployParams);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load trade');
+        setStatus('error');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadTradeDetails();
+  }, [tradeId]);
 
   const handleExecute = async () => {
     if (!trade || !deployParams || !publicKey) return;
@@ -139,7 +137,8 @@ export function TradeExecutionModal({ tradeId, onClose, onComplete }: TradeExecu
         await new Promise((resolve) => setTimeout(resolve, 5000));
         attempts++;
       } catch (err) {
-        throw new Error('Failed to check transaction status');
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        throw new Error(`Failed to check transaction status: ${message}`);
       }
     }
 

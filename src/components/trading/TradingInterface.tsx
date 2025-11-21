@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useCasperWallet } from '@/hooks/useCasperWallet';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -62,6 +62,39 @@ export function TradingInterface({ projectId, tokenSymbol, currentPrice }: Tradi
   const [price, setPrice] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  const loadOrderBook = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/projects/${projectId}/orders`);
+      const data = await response.json();
+      setOrderBook(data);
+    } catch (error) {
+      console.error('Error loading order book:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId]);
+
+  const loadRecentTrades = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/projects/${projectId}/trades?limit=20`);
+      const { trades } = await response.json();
+      setRecentTrades(trades);
+    } catch (error) {
+      console.error('Error loading trades:', error);
+    }
+  }, [projectId]);
+
+  const loadUserOrders = useCallback(async () => {
+    if (!publicKey) return;
+    try {
+      const response = await fetch(`/api/projects/${projectId}/orders?wallet=${publicKey}`);
+      const { orders } = await response.json();
+      setUserOrders(orders);
+    } catch (error) {
+      console.error('Error loading user orders:', error);
+    }
+  }, [projectId, publicKey]);
+
   useEffect(() => {
     loadOrderBook();
     loadRecentTrades();
@@ -79,40 +112,7 @@ export function TradingInterface({ projectId, tokenSymbol, currentPrice }: Tradi
     }, 10000);
 
     return () => clearInterval(interval);
-  }, [projectId, isConnected, publicKey]);
-
-  const loadOrderBook = async () => {
-    try {
-      const response = await fetch(`/api/projects/${projectId}/orders`);
-      const data = await response.json();
-      setOrderBook(data);
-    } catch (error) {
-      console.error('Error loading order book:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadRecentTrades = async () => {
-    try {
-      const response = await fetch(`/api/projects/${projectId}/trades?limit=20`);
-      const { trades } = await response.json();
-      setRecentTrades(trades);
-    } catch (error) {
-      console.error('Error loading trades:', error);
-    }
-  };
-
-  const loadUserOrders = async () => {
-    if (!publicKey) return;
-    try {
-      const response = await fetch(`/api/projects/${projectId}/orders?wallet=${publicKey}`);
-      const { orders } = await response.json();
-      setUserOrders(orders);
-    } catch (error) {
-      console.error('Error loading user orders:', error);
-    }
-  };
+  }, [isConnected, publicKey, loadOrderBook, loadRecentTrades, loadUserOrders]);
 
   const handleSubmitOrder = async (e: React.FormEvent) => {
     e.preventDefault();

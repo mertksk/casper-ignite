@@ -12,7 +12,6 @@
 
 import { prisma } from "@/lib/db";
 
-const PLATFORM_FEE_CSPR = 600; // Platform fee in CSPR
 const LIQUIDITY_CSPR = 1400; // Initial liquidity in CSPR
 
 export interface BondingCurveParams {
@@ -41,10 +40,7 @@ class BondingCurveService {
    * Initialize bonding curve for a new project
    */
   async initialize(params: BondingCurveParams): Promise<void> {
-    const { projectId, initialPrice, reserveRatio, totalSupply } = params;
-
-    // Calculate slope for linear curve
-    const slope = initialPrice / (totalSupply * reserveRatio);
+    const { projectId, initialPrice, reserveRatio } = params;
 
     await prisma.bondingCurve.create({
       data: {
@@ -159,8 +155,7 @@ class BondingCurveService {
    */
   async executePurchase(
     projectId: string,
-    tokenAmount: number,
-    buyerAddress: string
+    tokenAmount: number
   ): Promise<PurchaseCalculation> {
     const calculation = await this.calculatePurchase(projectId, tokenAmount);
 
@@ -197,8 +192,7 @@ class BondingCurveService {
    */
   async executeSell(
     projectId: string,
-    tokenAmount: number,
-    sellerAddress: string
+    tokenAmount: number
   ): Promise<SellCalculation> {
     const calculation = await this.calculateSell(projectId, tokenAmount);
     const curve = await prisma.bondingCurve.findUnique({
