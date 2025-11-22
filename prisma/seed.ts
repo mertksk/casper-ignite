@@ -1,6 +1,6 @@
 /* eslint-disable no-console */
 import "dotenv/config";
-import { PrismaClient, OrderSide, ProjectTokenStatus, ProjectCategory, MarketLevel } from "../src/generated/prisma/client";
+import { PrismaClient, OrderSide, ProjectTokenStatus, ProjectCategory, MarketLevel } from "@prisma/client";
 
 const prisma = new PrismaClient();
 

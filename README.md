@@ -102,7 +102,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser to see the a
 - `/src` - Application source code
 - `/prisma` - Database schema and migrations
 - `/public` - Static assets
-- `/src/generated/prisma` - Generated Prisma Client
+- `@prisma/client` - Generated Prisma Client (output in `node_modules/.prisma/client`)
 
 ## Tech Stack
 
