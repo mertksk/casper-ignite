@@ -7,7 +7,8 @@ import { useCasperWallet } from "@/hooks/useCasperWallet";
 import { Button } from "../ui/button";
 
 const links = [
-  { href: "/", label: "Projects" },
+  { href: "/", label: "Home" },
+  { href: "/projects", label: "Projects" },
   { href: "/projects/new", label: "Create Project" },
   { href: "/search", label: "Search" },
 ];
