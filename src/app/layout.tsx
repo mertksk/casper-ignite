@@ -4,7 +4,7 @@ import "./globals.css";
 import { Providers } from "@/components/providers";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
-import { publicRuntime } from "@/lib/config";
+import { publicRuntime } from "@/lib/client-config";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",

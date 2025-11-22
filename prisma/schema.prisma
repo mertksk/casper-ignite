@@ -33,8 +33,9 @@ model Project {
   fundingGoal       Float              // Target CSPR to raise
 
   // Payment tracking
-  platformFeeHash   String?            // Transaction hash for 600 CSPR platform fee
-  liquidityPoolHash String?            // Transaction hash for 1400 CSPR liquidity
+  platformFeeHash   String?            // Transaction hash for 20 CSPR platform fee
+  liquidityPoolHash String?            // Transaction hash for 180 CSPR liquidity
+  tokenDeployHash   String?            // User's CEP-18 token deployment hash (~250 CSPR gas)
 
   // Approval tracking
   approvedAt        DateTime?          // When promoted to APPROVED market

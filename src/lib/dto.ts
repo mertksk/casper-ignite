@@ -8,6 +8,8 @@ export const paginationSchema = z.object({
 export const projectListQuerySchema = paginationSchema.extend({
   sort: z.enum(["createdAt", "marketCap"]).default("createdAt"),
   search: z.string().trim().optional(),
+  category: z.enum(["ALL", "DEFI", "GAMING", "NFT", "DAO", "INFRASTRUCTURE", "METAVERSE", "SOCIAL", "MARKETPLACE", "TOOLS", "OTHER"]).optional(),
+  marketLevel: z.enum(["ALL", "APPROVED", "PRE_MARKET"]).optional(),
 });
 
 export const projectIdSchema = z.object({
@@ -39,8 +41,9 @@ export const projectCreateSchema = z.object({
   roadmap: z.string().min(50).max(5_000, "Roadmap can be at most 5000 characters."),
   fundingGoal: z.coerce.number().positive().min(100, "Goal must be at least 100 CSPR."),
   // Payment verification (required for production)
-  platformFeeHash: z.string().optional(), // Deploy hash for 600 CSPR platform fee
-  liquidityPoolHash: z.string().optional(), // Deploy hash for 1400 CSPR liquidity pool
+  platformFeeHash: z.string().optional(), // Deploy hash for 20 CSPR platform fee
+  liquidityPoolHash: z.string().optional(), // Deploy hash for 180 CSPR liquidity pool
+  tokenDeployHash: z.string().optional(), // Deploy hash for CEP-18 token deployment (user deploys their own token)
 });
 
 export const orderCreateSchema = z.object({

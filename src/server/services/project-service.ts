@@ -2,7 +2,7 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { projectListQuerySchema, type ProjectListQuery, type ProjectCreateInput, type OrderCreateInput } from "@/lib/dto";
-import { deployProjectToken } from "@/lib/casper";
+import { getContractHashesFromDeploy } from "@/lib/casper";
 import { bondingCurveService } from "./bonding-curve-service";
 
 type ProjectInclude = Prisma.ProjectGetPayload<{
@@ -52,12 +52,24 @@ export const projectService = {
     const params = parsed.data as ProjectListQuery;
 
     const where: Prisma.ProjectWhereInput = {};
+
+    // Search filter
     if (params.search) {
       where.OR = [
         { title: { contains: params.search, mode: "insensitive" } },
         { description: { contains: params.search, mode: "insensitive" } },
         { tokenSymbol: { contains: params.search, mode: "insensitive" } },
       ];
+    }
+
+    // Category filter
+    if (params.category && params.category !== "ALL") {
+      where.category = params.category as Prisma.ProjectWhereInput["category"];
+    }
+
+    // Market level filter
+    if (params.marketLevel && params.marketLevel !== "ALL") {
+      where.marketLevel = params.marketLevel as Prisma.ProjectWhereInput["marketLevel"];
     }
 
     const orderBy =
@@ -123,13 +135,22 @@ export const projectService = {
   },
 
   async createProject(input: ProjectCreateInput) {
-    // Step 1: Deploy CEP-18 token contract
-    const { contractHash, contractPackageHash } = await deployProjectToken({
-      symbol: input.tokenSymbol,
-      totalSupply: input.tokenSupply,
-      projectName: input.title,
-      creatorPublicKey: input.creatorAddress,
-    });
+    // Step 1: Extract contract hash from user's token deployment
+    // In development, if tokenDeployHash is not provided, we'll set status to PENDING
+    let contractHash: string | null = null;
+    let contractPackageHash: string | null = null;
+    let tokenStatus: "PENDING" | "DEPLOYED" = "PENDING";
+
+    if (input.tokenDeployHash) {
+      const hashes = await getContractHashesFromDeploy(input.tokenDeployHash);
+      contractHash = hashes.contractHash;
+      contractPackageHash = hashes.contractPackageHash;
+      tokenStatus = contractHash ? "DEPLOYED" : "PENDING";
+
+      if (!contractHash) {
+        throw new Error("Token deployment hash provided but contract hash could not be extracted. Please ensure the deploy was successful.");
+      }
+    }
 
     // Step 2: Create project with all new fields
     const project = await prisma.project.create({
@@ -141,8 +162,8 @@ export const projectService = {
         ownershipPercent: input.ownershipPercent,
         creatorAddress: input.creatorAddress,
         tokenContractHash: contractHash,
-        tokenPackageHash: contractPackageHash ?? null,
-        tokenStatus: contractHash ? "DEPLOYED" : "PENDING",
+        tokenPackageHash: contractPackageHash,
+        tokenStatus,
 
         // New fields
         category: input.category as Prisma.ProjectCreateInput["category"],
@@ -150,9 +171,10 @@ export const projectService = {
         fundingGoal: input.fundingGoal,
         marketLevel: "PRE_MARKET", // All new projects start in pre-market
 
-        // Note: platformFeeHash and liquidityPoolHash should be set
-        // after payment deploys are sent and confirmed
-        // For now, they remain null until payment flow is implemented
+        // Store payment deploy hashes for audit trail
+        platformFeeHash: input.platformFeeHash ?? null,
+        liquidityPoolHash: input.liquidityPoolHash ?? null,
+        tokenDeployHash: input.tokenDeployHash ?? null,
 
         metrics: {
           create: {

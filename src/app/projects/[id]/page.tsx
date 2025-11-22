@@ -4,6 +4,7 @@ import { projectService } from "@/server/services/project-service";
 import { Card, CardContent } from "@/components/ui/card";
 import { TradingInterface } from "@/components/trading/TradingInterface";
 import { PriceChart } from "@/components/charts/price-chart";
+import { CopyAddress } from "@/components/ui/copy-address";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -53,7 +54,9 @@ export default async function ProjectDetailPage({ params }: PageProps) {
               </div>
               <div className="rounded-2xl bg-brand-50/80 p-3 text-center shadow-sm">
                 <dt className="text-xs uppercase tracking-wide text-brand-500">Founder</dt>
-                <dd className="text-lg font-semibold">{project.creatorAddress}</dd>
+                <dd className="flex items-center justify-center">
+                  <CopyAddress address={project.creatorAddress} />
+                </dd>
               </div>
             </dl>
           </CardContent>

@@ -31,16 +31,22 @@ export async function enforceRateLimit(request: NextRequest, bucket = "global") 
   const max = appConfig.RATE_LIMIT_MAX;
 
   if (redis) {
-    const ttlSeconds = Math.ceil(windowMs / 1000);
-    const tx = redis.multi();
-    tx.incr(identifier);
-    tx.expire(identifier, ttlSeconds);
-    const [countResult] = (await tx.exec()) ?? [];
-    const count = Array.isArray(countResult) ? Number(countResult[1]) : Number(countResult);
-    if (count > max) {
-      throw new RateLimitError("Too many requests. Please try again later.");
+    try {
+      const ttlSeconds = Math.ceil(windowMs / 1000);
+      const tx = redis.multi();
+      tx.incr(identifier);
+      tx.expire(identifier, ttlSeconds);
+      const [countResult] = (await tx.exec()) ?? [];
+      const count = Array.isArray(countResult) ? Number(countResult[1]) : Number(countResult);
+      if (count > max) {
+        throw new RateLimitError("Too many requests. Please try again later.");
+      }
+      return;
+    } catch (error) {
+      if (error instanceof RateLimitError) throw error;
+      console.warn("Rate limit Redis error, falling back to memory:", error instanceof Error ? error.message : error);
+      // Fall through to memory store
     }
-    return;
   }
 
   const now = Date.now();

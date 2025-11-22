@@ -32,7 +32,7 @@ type DeployInput = {
 const NETWORK_NAME = appConfig.NEXT_PUBLIC_CHAIN_NAME;
 const DEFAULT_TTL_MS = 30 * 60 * 1000;
 const DEFAULT_GAS_PRICE = 1;
-const TOKEN_DEPLOY_PAYMENT = "150000000000"; // 150 CSPR in motes
+const TOKEN_DEPLOY_PAYMENT = "250000000000"; // 250 CSPR in motes (CEP-18 deployment needs ~200+ CSPR)
 const TRANSFER_PAYMENT = "100000000"; // 0.1 CSPR in motes
 const TOKEN_TRANSFER_PAYMENT = "3000000000"; // 3 CSPR in motes for CEP-18 transfers
 
@@ -47,6 +47,29 @@ function getRpcClient(): RpcClient {
     rpcClient = buildRpcClient(appConfig.rpcUrls.primary);
   }
   return rpcClient;
+}
+
+/**
+ * Verify that the configured chain name matches the RPC endpoint.
+ * This helps catch configuration mismatches early.
+ */
+async function verifyChainName(): Promise<void> {
+  try {
+    const status = await withRpcFallback((client) => client.getStatus());
+    const statusRaw = status as unknown as { chainspec_name?: string; chain_spec_name?: string };
+    const rpcChainName = status.chainSpecName ?? statusRaw.chainspec_name ?? statusRaw.chain_spec_name;
+
+    if (rpcChainName && rpcChainName !== NETWORK_NAME) {
+      console.warn(
+        `[CHAIN NAME MISMATCH] Configuration chain name "${NETWORK_NAME}" does not match RPC chain name "${rpcChainName}". ` +
+        `This will cause deploys to be rejected. Update NEXT_PUBLIC_CHAIN_NAME in your .env file to "${rpcChainName}".`
+      );
+    } else {
+      console.log(`[CHAIN VERIFIED] Chain name "${NETWORK_NAME}" matches RPC endpoint.`);
+    }
+  } catch (error) {
+    console.warn("[CHAIN VERIFICATION FAILED] Could not verify chain name:", error instanceof Error ? error.message : String(error));
+  }
 }
 
 function withRpcFallback<T>(fn: (client: RpcClient) => Promise<T>): Promise<T> {
@@ -92,9 +115,10 @@ function buildCep18RuntimeArgs(input: DeployInput): Args {
   });
 }
 
-function buildUnsignedTokenDeploy(input: DeployInput) {
+function buildUnsignedTokenDeploy(input: DeployInput, deployerPublicKey?: PublicKey) {
   const wasmBytes = readCep18Wasm();
-  const creatorKey = PublicKey.fromHex(input.creatorPublicKey);
+  // Use deployerPublicKey if provided (server-side), otherwise use creator's key (client-side)
+  const accountKey = deployerPublicKey ?? PublicKey.fromHex(input.creatorPublicKey);
   const runtimeArgs = buildCep18RuntimeArgs(input);
 
   const session = new ExecutableDeployItem();
@@ -106,9 +130,9 @@ function buildUnsignedTokenDeploy(input: DeployInput) {
     NETWORK_NAME,
     [],
     DEFAULT_GAS_PRICE,
-    new Timestamp(new Date()),
+    new Timestamp(new Date(Date.now() - 20000)), // 20s buffer for clock skew
     new Duration(DEFAULT_TTL_MS),
-    creatorKey
+    accountKey  // Use the account that will sign the deploy
   );
 
   const deploy = Deploy.makeDeploy(header, payment, session);
@@ -117,7 +141,7 @@ function buildUnsignedTokenDeploy(input: DeployInput) {
     deploy,
     deployJson: Deploy.toJSON(deploy),
     deployHash: deploy.hash.toHex(),
-    creatorKey,
+    creatorKey: accountKey,
     runtimeArgs,
     name: input.projectName,
     symbol: input.symbol,
@@ -142,6 +166,160 @@ function loadServerSigner(): PrivateKey | null {
 }
 
 /**
+ * Check if the deployer account has enough funds.
+ * Throws a detailed error if the account is empty (unfunded) or has insufficient balance.
+ */
+async function checkDeployerBalance(publicKeyHex: string, requiredMotes: string) {
+  try {
+    const accountHash = PublicKey.fromHex(publicKeyHex).accountHash().toHex();
+    const key = `account-hash-${accountHash}`;
+
+    // Use the simpler queryLatestGlobalState which handles root hash internally
+    const result = await withRpcFallback((c) =>
+      c.queryLatestGlobalState(key, [])
+    );
+
+    const resultRaw = result as unknown as {
+      Account?: unknown;
+      storedValue?: { account?: unknown };
+      stored_value?: { account?: unknown };
+    };
+
+    // Try different case variations (account vs Account)
+    const account = resultRaw.Account ??
+                    resultRaw.storedValue?.account ??
+                    resultRaw.stored_value?.account ??
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    (resultRaw as any).storedValue?.Account ??
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    (resultRaw as any).stored_value?.Account;
+
+    if (!account) {
+      // If we get a result but no account object, it might mean account doesn't exist
+      throw new Error("Account structure not found in query result.");
+    }
+
+    const accountData = account as { mainPurse: string };
+    const mainPurse = accountData.mainPurse;
+
+    if (!mainPurse) {
+      throw new Error("Main purse not found in account data");
+    }
+
+    // Query the balance using a direct RPC call instead of the SDK method
+    // The SDK's queryLatestBalance has serialization issues with PurseIdentifier
+    const rpcUrl = appConfig.rpcUrls.primary;
+    const balanceResponse = await fetch(rpcUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "query_balance",
+        params: { purse_identifier: { main_purse_under_public_key: publicKeyHex } },
+        id: 1
+      })
+    });
+
+    const balanceData = await balanceResponse.json();
+
+    if (balanceData.error) {
+      throw new Error(`Balance query failed: ${balanceData.error.message ?? JSON.stringify(balanceData.error)}`);
+    }
+
+    if (!balanceData.result?.balance) {
+      throw new Error("Balance not found in RPC response");
+    }
+
+    const balanceMotes = BigInt(balanceData.result.balance);
+    const required = BigInt(requiredMotes);
+
+    console.log(`[Balance Check] Account ${publicKeyHex} has ${motesToCSPR(balanceMotes)} CSPR (required: ${motesToCSPR(required)} CSPR)`);
+
+    if (balanceMotes < required) {
+      throw new Error(
+        `Insufficient funds. Address: ${publicKeyHex}\n` +
+        `Required: ${motesToCSPR(required)} CSPR\n` +
+        `Current: ${motesToCSPR(balanceMotes)} CSPR\n` +
+        `Please fund this address via the Testnet Faucet: https://testnet.cspr.live/tools/faucet`
+      );
+    }
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    const errorRaw = error as unknown as { statusCode?: number; code?: number };
+    const errorCode = errorRaw.statusCode ?? errorRaw.code;
+
+    // Error code -32003 means "Query failed" which typically indicates account doesn't exist
+    // Explicitly handle query failures and account not found errors
+    if (
+      errorCode === -32003 ||
+      msg.includes("Query failed") ||
+      msg.includes("Account not found") ||
+      msg.includes("Value not found") ||
+      msg.includes("Missing key") ||
+      msg.includes("Account structure not found")
+    ) {
+      throw new Error(
+        `❌ DEPLOYER ACCOUNT NOT FUNDED\n\n` +
+        `The deployer wallet has never received funds on Casper Testnet.\n\n` +
+        `Public Key: ${publicKeyHex}\n` +
+        `Required: ${motesToCSPR(requiredMotes)} CSPR (minimum)\n\n` +
+        `📝 To fix this:\n` +
+        `1. Visit the Casper Testnet Faucet: https://testnet.cspr.live/tools/faucet\n` +
+        `2. Enter the public key above\n` +
+        `3. Request at least 200 CSPR\n` +
+        `4. Wait for the transaction to complete (~1-2 minutes)\n` +
+        `5. Try deploying again`
+      );
+    }
+
+    // For other unexpected errors, log warning but ALLOW flow to proceed.
+    // This prevents blocking valid deployments due to balance check bugs.
+    console.warn(`[Balance Check Skipped] Could not verify balance for ${publicKeyHex} due to error: ${msg}. Proceeding with deployment...`);
+  }
+}
+
+/**
+ * Validate deploy before sending to RPC to catch common errors early.
+ */
+function validateDeploy(deploy: Deploy, signerPublicKeyHex: string) {
+  const errors: string[] = [];
+
+  // Check approvals array exists and has at least one entry
+  if (!deploy.approvals || deploy.approvals.length === 0) {
+    errors.push("Deploy has no approvals - signature may not have been added correctly");
+  }
+
+  // Verify the signer's public key matches one of the approvals
+  if (deploy.approvals && deploy.approvals.length > 0) {
+    const signerMatches = deploy.approvals.some(
+      (approval) => approval.signer.toHex() === signerPublicKeyHex
+    );
+    if (!signerMatches) {
+      errors.push(`Signer public key ${signerPublicKeyHex} does not match any approval signatures`);
+    }
+  }
+
+  // Check deploy hash exists
+  if (!deploy.hash) {
+    errors.push("Deploy hash is missing");
+  }
+
+  // Check header exists and has required fields
+  if (!deploy.header) {
+    errors.push("Deploy header is missing");
+  } else {
+    if (!deploy.header.chainName) {
+      errors.push("Chain name is missing from deploy header");
+    }
+    if (!deploy.header.account) {
+      errors.push("Account public key is missing from deploy header");
+    }
+  }
+
+  return errors;
+}
+
+/**
  * Deploy a CEP-18 token contract on the configured network.
  * Requires a server-side signer (CSPR_DEPLOYER_PRIVATE_KEY_* environment variables).
  */
@@ -150,7 +328,6 @@ export async function deployProjectToken(input: DeployInput): Promise<{
   contractPackageHash?: string;
   deployHash: string;
 }> {
-  const unsigned = buildUnsignedTokenDeploy(input);
   const signer = loadServerSigner();
 
   if (!signer) {
@@ -159,9 +336,85 @@ export async function deployProjectToken(input: DeployInput): Promise<{
     );
   }
 
+  // Get signer's public key - this must match the deploy header account
+  const signerPublicKey = signer.publicKey;
+  const signerPublicKeyHex = signerPublicKey.toHex();
+
+  // Build deploy with the server's public key as the account (not the user's)
+  const unsigned = buildUnsignedTokenDeploy(input, signerPublicKey);
+
+  // Sign the deploy
   unsigned.deploy.sign(signer);
 
-  await withRpcFallback((client) => client.putDeploy(unsigned.deploy));
+  // Validate deploy structure before sending
+  const validationErrors = validateDeploy(unsigned.deploy, signerPublicKeyHex);
+  if (validationErrors.length > 0) {
+    console.error("[DEPLOY VALIDATION FAILED]", {
+      errors: validationErrors,
+      deployHash: unsigned.deploy.hash.toHex(),
+      signerPublicKey: signerPublicKeyHex,
+      approvalsCount: unsigned.deploy.approvals?.length ?? 0,
+    });
+    throw new Error(
+      `Deploy validation failed:\n${validationErrors.join("\n")}\n\n` +
+      `This indicates a problem with deploy construction or signing.`
+    );
+  }
+
+  // Verify chain name matches RPC (logs warning if mismatch)
+  await verifyChainName();
+
+  // Log deploy details for debugging
+  console.log("[DEPLOY DEBUG]", {
+    deployHash: unsigned.deploy.hash.toHex(),
+    chainName: unsigned.deploy.header.chainName,
+    signerPublicKey: signerPublicKeyHex,
+    accountPublicKey: unsigned.deploy.header.account?.toHex() ?? "unknown",
+    approvalsCount: unsigned.deploy.approvals.length,
+    approvals: unsigned.deploy.approvals.map(a => ({
+      signer: a.signer.toHex(),
+      signatureHex: a.signature.toHex?.() ?? "unknown",
+    })),
+    paymentAmount: TOKEN_DEPLOY_PAYMENT,
+    timestamp: unsigned.deploy.header.timestamp?.toString() ?? "unknown",
+    ttl: unsigned.deploy.header.ttl?.toString() ?? "unknown",
+  });
+
+  // Check balance (may log warning but won't throw unless account is confirmed unfunded)
+  await checkDeployerBalance(signerPublicKeyHex, TOKEN_DEPLOY_PAYMENT);
+
+  // Send deploy to RPC
+  try {
+    await withRpcFallback((client) => client.putDeploy(unsigned.deploy));
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    const errorRaw = error as unknown as { statusCode?: number; code?: number };
+    const errorCode = errorRaw.statusCode ?? errorRaw.code;
+
+    // Provide helpful error messages based on common issues
+    let helpfulMessage = `Failed to submit deploy to Casper RPC: ${errorMsg}`;
+
+    if (errorCode === -32008 || errorMsg.includes("Invalid Deploy")) {
+      helpfulMessage += "\n\n" +
+        "Error Code -32008 (Invalid Deploy) typically means:\n" +
+        "1. The deployer account may be unfunded - get testnet funds from https://testnet.cspr.live/tools/faucet\n" +
+        "2. The deploy signature is invalid or missing\n" +
+        "3. The chain name doesn't match the network\n" +
+        "4. The deploy structure is malformed\n\n" +
+        `Deployer address: ${signerPublicKeyHex}\n` +
+        `Chain name: ${unsigned.deploy.header.chainName}\n` +
+        `RPC endpoint: ${appConfig.rpcUrls.primary}`;
+    }
+
+    // Log full deploy JSON for debugging
+    console.error("[DEPLOY SUBMISSION FAILED]", {
+      error: errorMsg,
+      errorCode,
+      deployJson: Deploy.toJSON(unsigned.deploy),
+    });
+
+    throw new Error(helpfulMessage);
+  }
 
   const deployHash = unsigned.deploy.hash.toHex();
   const waitResult = await waitForDeploy(deployHash, 300_000);

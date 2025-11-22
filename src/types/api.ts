@@ -7,6 +7,8 @@ export type ProjectSummary = {
   ownershipPercent: number;
   creatorAddress: string;
   tokenStatus: "PENDING" | "DEPLOYED" | "FAILED";
+  marketLevel: "PRE_MARKET" | "APPROVED";
+  category: "DEFI" | "GAMING" | "NFT" | "DAO" | "INFRASTRUCTURE" | "METAVERSE" | "SOCIAL" | "MARKETPLACE" | "TOOLS" | "OTHER";
   createdAt: string;
   metrics: {
     currentPrice: number;

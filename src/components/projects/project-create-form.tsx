@@ -1,5 +1,6 @@
 'use client';
 
+import { publicRuntime } from "@/lib/client-config";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, Resolver } from "react-hook-form";
 import { useState, useEffect } from "react";
@@ -9,9 +10,12 @@ import { Textarea } from "../ui/textarea";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader } from "../ui/card";
 import { useCasperWallet } from "@/hooks/useCasperWallet";
+import { buildClientTokenDeploy, buildTransferDeploy } from "@/lib/casper-client";
+
+type DeploymentStep = 'idle' | 'platform-fee' | 'liquidity-pool' | 'token-deploy' | 'submitting' | 'done';
 
 export function ProjectCreateForm() {
-  const { publicKey, isConnected } = useCasperWallet();
+  const { publicKey, isConnected, signDeploy } = useCasperWallet();
   const form = useForm<ProjectCreateInput>({
     resolver: zodResolver(projectCreateSchema) as Resolver<ProjectCreateInput>,
     defaultValues: {
@@ -27,6 +31,7 @@ export function ProjectCreateForm() {
     },
   });
   const [message, setMessage] = useState<string | null>(null);
+  const [deploymentStep, setDeploymentStep] = useState<DeploymentStep>('idle');
 
   // Auto-fill creator address when wallet is connected
   useEffect(() => {
@@ -36,18 +41,125 @@ export function ProjectCreateForm() {
   }, [isConnected, publicKey, form]);
 
   async function onSubmit(values: ProjectCreateInput) {
-    setMessage(null);
-    const response = await fetch("/api/projects", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(values),
-    });
-    if (!response.ok) {
-      setMessage("Project could not be saved. Please verify the form fields.");
+    if (!publicKey || !isConnected) {
+      setMessage("Please connect your Casper wallet first.");
       return;
     }
-    setMessage("Project created! Token deployment has been kicked off.");
-    form.reset();
+
+    setMessage(null);
+
+    try {
+      // Step 1: Platform fee payment (20 CSPR)
+      setDeploymentStep('platform-fee');
+      setMessage(`Step 1/3: Sending platform fee (${publicRuntime.platformFeeAmount} CSPR)...`);
+
+      const platformFeeDeploy = buildTransferDeploy({
+        fromPublicKey: publicKey,
+        toPublicKey: publicRuntime.platformFeeAddress,
+        amount: (publicRuntime.platformFeeAmount * 1_000_000_000).toString(), // Convert to motes
+      });
+
+      const platformFeeSignature = await signDeploy(platformFeeDeploy.deployJson as string);
+      if (platformFeeSignature.cancelled) {
+        throw new Error(platformFeeSignature.message || "Platform fee payment was cancelled");
+      }
+      const platformFeeHash = platformFeeDeploy.deployHash;
+
+      // Step 2: Liquidity pool payment (180 CSPR)
+      setDeploymentStep('liquidity-pool');
+      setMessage(`Step 2/3: Sending liquidity pool (${publicRuntime.liquidityPoolAmount} CSPR)...`);
+
+      const liquidityPoolDeploy = buildTransferDeploy({
+        fromPublicKey: publicKey,
+        toPublicKey: publicRuntime.liquidityPoolAddress,
+        amount: (publicRuntime.liquidityPoolAmount * 1_000_000_000).toString(),
+      });
+
+      const liquidityPoolSignature = await signDeploy(liquidityPoolDeploy.deployJson as string);
+      if (liquidityPoolSignature.cancelled) {
+        throw new Error(liquidityPoolSignature.message || "Liquidity pool payment was cancelled");
+      }
+      const liquidityPoolHash = liquidityPoolDeploy.deployHash;
+
+      // Step 3: Token deployment (~250 CSPR gas)
+      setDeploymentStep('token-deploy');
+      setMessage(`Step 3/3: Deploying CEP-18 token (${values.tokenSymbol})...`);
+
+      const tokenDeploy = await buildClientTokenDeploy({
+        projectName: values.title,
+        symbol: values.tokenSymbol,
+        totalSupply: values.tokenSupply,
+        creatorPublicKey: publicKey,
+      });
+
+      const tokenSignature = await signDeploy(tokenDeploy.deployJson as string);
+      if (tokenSignature.cancelled) {
+        throw new Error(tokenSignature.message || "Token deployment was cancelled");
+      }
+      const tokenDeployHash = tokenDeploy.deployHash;
+
+      // Step 4: Submit project to backend
+      setDeploymentStep('submitting');
+      setMessage("Submitting project to platform...");
+
+      const response = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...values,
+          platformFeeHash,
+          liquidityPoolHash,
+          tokenDeployHash,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error("Submission error:", errorData);
+
+        let errorMessage = "Project could not be saved. Please verify the form fields.";
+
+        if (errorData.error) {
+          if (typeof errorData.error === 'string') {
+            errorMessage = errorData.error;
+          } else if (typeof errorData.error === 'object') {
+            const fieldErrors = errorData.error.fieldErrors || {};
+            const formErrors = errorData.error.formErrors || [];
+
+            const messages = [
+              ...formErrors,
+              ...Object.entries(fieldErrors).map(([field, msgs]) => `${field}: ${(msgs as string[]).join(', ')}`)
+            ];
+
+            if (messages.length > 0) {
+              errorMessage = `Validation failed: ${messages.join('; ')}`;
+            } else {
+              errorMessage = JSON.stringify(errorData.error);
+            }
+          }
+        }
+
+        setMessage(`Error: ${errorMessage}`);
+        setDeploymentStep('idle');
+        return;
+      }
+
+      setDeploymentStep('done');
+      setMessage("✅ Project created successfully! Your token is being deployed on Casper blockchain.");
+      form.reset();
+
+      // Reset to idle after 5 seconds
+      setTimeout(() => {
+        setDeploymentStep('idle');
+        setMessage(null);
+      }, 5000);
+
+    } catch (error) {
+      console.error("Deployment error:", error);
+      const errorMsg = error instanceof Error ? error.message : "Unknown error occurred";
+      setMessage(`Error: ${errorMsg}`);
+      setDeploymentStep('idle');
+    }
   }
 
   return (
@@ -55,13 +167,12 @@ export function ProjectCreateForm() {
       <CardHeader>
         <p className="text-base font-semibold text-brand-700">Create a New Project</p>
         <p className="text-sm text-brand-600">
-          Enter your title, description, and token parameters to open a crowdfunding listing on
-          Casper Ignite.
+          Fill in the details below to launch your project.
         </p>
         <div className="mt-3 rounded-lg border-2 border-brand-300 bg-brand-50 p-3">
-          <p className="text-sm font-semibold text-brand-700">💰 Listing Fee: 2000 CSPR</p>
+          <p className="text-sm font-semibold text-brand-700">💰 Listing Fee: {publicRuntime.totalPaymentAmount} CSPR</p>
           <p className="text-xs text-brand-600">
-            600 CSPR platform fee, 1400 CSPR initial liquidity pool
+            {publicRuntime.platformFeeAmount} CSPR platform fee, {publicRuntime.liquidityPoolAmount} CSPR initial liquidity pool
           </p>
         </div>
       </CardHeader>
@@ -168,12 +279,19 @@ export function ProjectCreateForm() {
 
           <Button
             type="submit"
-            disabled={form.formState.isSubmitting}
-            className="rounded-full bg-brand-500 text-white shadow-cartoon-pop hover:bg-brand-400"
+            disabled={deploymentStep !== 'idle' || !isConnected}
+            className="rounded-full bg-brand-500 text-white shadow-cartoon-pop hover:bg-brand-400 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {form.formState.isSubmitting ? "Submitting..." : "Publish Project (2000 CSPR Required)"}
+            {deploymentStep !== 'idle' ? "Processing..." : `Publish Project (${publicRuntime.totalPaymentAmount} CSPR Required)`}
           </Button>
-          {message && <p className="text-sm font-semibold text-brand-600">{message}</p>}
+          {!isConnected && (
+            <p className="text-sm font-semibold text-orange-600">⚠️ Please connect your Casper wallet to publish a project</p>
+          )}
+          {message && (
+            <p className={`text-sm font-semibold ${deploymentStep === 'done' ? 'text-green-600' : 'text-brand-600'}`}>
+              {message}
+            </p>
+          )}
         </form>
       </CardContent>
     </Card>

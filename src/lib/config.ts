@@ -43,17 +43,10 @@ export const appConfig = {
     liquidity: parsed.data.LIQUIDITY_POOL_ADDRESS,
   },
   paymentAmounts: {
-    platformFee: 600, // CSPR
-    liquidityPool: 1400, // CSPR
-    total: 2000, // CSPR
+    platformFee: 20, // CSPR - goes to platform
+    liquidityPool: 180, // CSPR - goes to liquidity pool
+    tokenDeployment: 250, // CSPR - user pays for their own token deployment gas
+    total: 450, // CSPR - total user payment (20 + 180 + 250)
   },
 } as const;
 
-export type AppConfig = typeof appConfig;
-
-export const publicRuntime = {
-  appName: parsed.data.NEXT_PUBLIC_APP_NAME,
-  chainName: parsed.data.NEXT_PUBLIC_CHAIN_NAME,
-  platformFeeAmount: 600,
-  liquidityPoolAmount: 1400,
-};

@@ -1,4 +1,4 @@
-import { publicRuntime } from "@/lib/config";
+import { publicRuntime } from "@/lib/client-config";
 
 export function SiteFooter() {
   return (

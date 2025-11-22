@@ -6,14 +6,30 @@ declare global {
   var redis: Redis | undefined;
 }
 
-const createRedis = () =>
-  appConfig.REDIS_URL
-    ? new Redis(appConfig.REDIS_URL, {
-        lazyConnect: true,
-        maxRetriesPerRequest: 1,
-        enableAutoPipelining: true,
-      })
-    : undefined;
+const createRedis = () => {
+  if (!appConfig.REDIS_URL) return undefined;
+  
+  const client = new Redis(appConfig.REDIS_URL, {
+    lazyConnect: true,
+    maxRetriesPerRequest: 1,
+    enableAutoPipelining: true,
+    retryStrategy: (times) => {
+      if (times > 3) return null; // Stop retrying after 3 attempts
+      return Math.min(times * 50, 2000);
+    },
+  });
+
+  client.on("error", (err) => {
+    // Suppress connection errors in dev/test to avoid noise if Redis is missing/misconfigured
+    if (appConfig.isDev || appConfig.isTest) {
+      console.warn("Redis connection error (suppressed):", err.message);
+    } else {
+      console.error("Redis connection error:", err);
+    }
+  });
+
+  return client;
+};
 
 export const redis = appConfig.REDIS_URL
   ? global.redis ?? createRedis()

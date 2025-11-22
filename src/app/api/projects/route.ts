@@ -1,9 +1,9 @@
+import { appConfig } from "@/lib/config";
 import { NextRequest, NextResponse } from "next/server";
 import { projectService } from "@/server/services/project-service";
 import { projectCreateSchema } from "@/lib/dto";
 import { enforceRateLimit, RateLimitError } from "@/lib/rate-limit";
 import { checkDeployStatus } from "@/lib/casper";
-import { appConfig } from "@/lib/config";
 
 export async function GET(request: NextRequest) {
   const searchParams = Object.fromEntries(request.nextUrl.searchParams.entries());
@@ -31,22 +31,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  // Verify payment deploys if provided (required for production)
-  const { platformFeeHash, liquidityPoolHash } = parsed.data;
+  // Verify all three deploys if provided (required for production)
+  const { platformFeeHash, liquidityPoolHash, tokenDeployHash } = parsed.data;
 
   // In development, payment verification can be skipped
   const requirePaymentVerification = !appConfig.isDev;
 
   if (requirePaymentVerification) {
-    if (!platformFeeHash || !liquidityPoolHash) {
+    if (!platformFeeHash || !liquidityPoolHash || !tokenDeployHash) {
       return NextResponse.json(
-        { error: "Payment verification required. Please complete the 2000 CSPR payment first." },
+        { error: `Payment verification required. Please complete all three deploys: platform fee (${appConfig.paymentAmounts.platformFee} CSPR), liquidity pool (${appConfig.paymentAmounts.liquidityPool} CSPR), and token deployment (~${appConfig.paymentAmounts.tokenDeployment} CSPR gas).` },
         { status: 400 }
       );
     }
 
     try {
-      // Verify platform fee payment (600 CSPR)
+      // Verify platform fee payment (20 CSPR)
       const feeStatus = await checkDeployStatus(platformFeeHash);
       if (!feeStatus.executed || !feeStatus.success) {
         return NextResponse.json(
@@ -55,11 +55,20 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Verify liquidity pool payment (1400 CSPR)
+      // Verify liquidity pool payment (180 CSPR)
       const liquidityStatus = await checkDeployStatus(liquidityPoolHash);
       if (!liquidityStatus.executed || !liquidityStatus.success) {
         return NextResponse.json(
           { error: "Liquidity pool payment not confirmed on blockchain. Please wait for confirmation." },
+          { status: 400 }
+        );
+      }
+
+      // Verify token deployment (user's CEP-18 deployment)
+      const tokenStatus = await checkDeployStatus(tokenDeployHash);
+      if (!tokenStatus.executed || !tokenStatus.success) {
+        return NextResponse.json(
+          { error: "Token deployment not confirmed on blockchain. Please wait for confirmation." },
           { status: 400 }
         );
       }
@@ -72,6 +81,12 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const project = await projectService.createProject(parsed.data);
-  return NextResponse.json(project, { status: 201 });
+  try {
+    const project = await projectService.createProject(parsed.data);
+    return NextResponse.json(project, { status: 201 });
+  } catch (error) {
+    console.error("Project creation failed:", error);
+    const message = error instanceof Error ? error.message : "Failed to create project.";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
