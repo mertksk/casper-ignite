@@ -35,7 +35,13 @@ model Project {
   // Payment tracking
   platformFeeHash   String?            // Transaction hash for 20 CSPR platform fee
   liquidityPoolHash String?            // Transaction hash for 180 CSPR liquidity
-  tokenDeployHash   String?            // User's CEP-18 token deployment hash (~250 CSPR gas)
+  tokenDeployHash   String?            // Platform's CEP-18 token deployment hash
+
+  // Token distribution tracking (platform deploys, then distributes to creator)
+  creatorTokenAmount     Float?        // Tokens transferred to creator
+  platformTokenAmount    Float?        // Tokens kept by platform for bonding curve
+  tokenDistributionHash  String?       // Deploy hash of creator token transfer
+  deployedBy             String?       // "PLATFORM" or "CREATOR" (legacy)
 
   // Approval tracking
   approvedAt        DateTime?          // When promoted to APPROVED market
@@ -91,7 +97,7 @@ model BondingCurve {
   initialPrice  Float    // Starting price per token
   reserveRatio  Float    // Curve steepness (0-1)
   currentSupply Float    @default(0) // Tokens sold so far
-  reserveBalance Float   @default(0) // CSPR in reserve (1400 initially)
+  reserveBalance Float   @default(180) // CSPR in reserve (180 from liquidity pool payment)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -193,4 +199,35 @@ enum ProjectCategory {
   MARKETPLACE
   TOOLS
   OTHER
+}
+
+model RollbackLog {
+  id          String   @id @default(cuid())
+  projectId   String
+  tradeType   String   // "BUY" or "SELL"
+  tokenAmount Float
+  amount      Float    // CSPR amount (cost for buy, proceeds for sell)
+  deployHash  String
+  reason      String   // Reason for rollback
+  createdAt   DateTime @default(now())
+
+  @@index([projectId, createdAt])
+  @@index([deployHash])
+}
+
+model CriticalAlert {
+  id         String   @id @default(cuid())
+  type       String   // Alert type (e.g., "ROLLBACK_FAILED")
+  projectId  String
+  deployHash String
+  error      String
+  metadata   String   // JSON string with additional context
+  resolved   Boolean  @default(false)
+  resolvedAt DateTime?
+  resolvedBy String?  // Admin who resolved it
+  createdAt  DateTime @default(now())
+
+  @@index([resolved, createdAt])
+  @@index([projectId])
+  @@index([deployHash])
 }

@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { Metadata } from "next";
 import { projectService } from "@/server/services/project-service";
 import { Card, CardContent } from "@/components/ui/card";
-import { TradingInterface } from "@/components/trading/TradingInterface";
+import { SimpleTradingInterface } from "@/components/trading/SimpleTradingInterface";
 import { PriceChart } from "@/components/charts/price-chart";
 import { CopyAddress } from "@/components/ui/copy-address";
 
@@ -90,10 +90,10 @@ export default async function ProjectDetailPage({ params }: PageProps) {
       {/* Price Chart - Binance Style */}
       <PriceChart data={project.priceHistory} tokenSymbol={project.tokenSymbol} />
 
-      {/* Trading Interface with Order Book */}
+      {/* Simple Trading Interface with Bonding Curve */}
       <section>
-        <h2 className="mb-4 text-2xl font-semibold text-brand-800">Trading</h2>
-        <TradingInterface
+        <h2 className="mb-4 text-2xl font-semibold text-brand-800">Trade Instantly</h2>
+        <SimpleTradingInterface
           projectId={project.id}
           tokenSymbol={project.tokenSymbol}
           currentPrice={project.metrics.currentPrice}

@@ -497,6 +497,130 @@ export async function checkDeployStatus(deployHash: string): Promise<{
 }
 
 /**
+ * Verify CSPR payment deploy
+ * Checks that a deploy transfers the correct amount to the correct recipient
+ */
+export async function verifyCSPRPayment(params: {
+  deployHash: string;
+  expectedAmount: number; // CSPR amount
+  expectedRecipient: string; // Public key hex
+  senderPublicKey: string; // Public key hex
+}): Promise<{
+  valid: boolean;
+  error?: string;
+  actualAmount?: number;
+}> {
+  const { deployHash, expectedAmount, expectedRecipient, senderPublicKey } = params;
+  const cleanHash = normalizeHash(deployHash);
+
+  try {
+    const result = await withRpcFallback((client) => client.getDeploy(cleanHash));
+
+    // Check deploy exists and executed successfully
+    const execution =
+      result.executionResultsV1?.[0] ?? result.rawJSON?.execution_results?.[0];
+
+    if (!execution) {
+      return { valid: false, error: "Deploy not yet executed" };
+    }
+
+    const successResult = execution.result?.success ?? execution.result?.Success;
+    if (!successResult) {
+      return { valid: false, error: "Deploy failed on blockchain" };
+    }
+
+    // Get deploy details
+    const deploy = result.deploy ?? result.rawJSON?.deploy;
+    if (!deploy) {
+      return { valid: false, error: "Deploy data not found" };
+    }
+
+    // Verify sender
+    const deployAccount = deploy.header?.account;
+    const deployAccountHex = deployAccount?.toHex?.() ?? (deployAccount as unknown as string);
+
+    if (deployAccountHex !== senderPublicKey) {
+      return {
+        valid: false,
+        error: `Sender mismatch. Expected ${senderPublicKey}, got ${deployAccountHex}`,
+      };
+    }
+
+    // Parse transfer args to get amount and recipient
+    const session = deploy.session as unknown as {
+      transfer?: { args?: Array<{ name: string; value: unknown }> };
+    };
+    const transfer = session?.transfer;
+
+    if (!transfer) {
+      return { valid: false, error: "Not a transfer deploy" };
+    }
+
+    // Get transfer amount (in motes)
+    const transferArgs = transfer.args;
+    const amountArg = transferArgs?.find((arg) =>
+      ["amount", "Amount"].includes(arg.name)
+    );
+
+    if (!amountArg) {
+      return { valid: false, error: "Transfer amount not found in deploy" };
+    }
+
+    const amountValue = amountArg.value as unknown as { parsed?: string } | string;
+    const amountStr = typeof amountValue === "string" ? amountValue : (amountValue as { parsed: string }).parsed;
+    const amountMotes = BigInt(amountStr);
+    const actualAmountCSPR = motesToCSPR(amountMotes);
+
+    // Get recipient
+    const targetArg = transferArgs?.find((arg) =>
+      ["target", "Target"].includes(arg.name)
+    );
+
+    if (!targetArg) {
+      return { valid: false, error: "Transfer recipient not found in deploy" };
+    }
+
+    const targetValue = targetArg.value as unknown as { parsed?: { PublicKey?: string } } | string;
+    const targetPublicKey =
+      typeof targetValue === "string"
+        ? targetValue
+        : (targetValue as { parsed: { PublicKey: string } }).parsed?.PublicKey;
+
+    // Normalize recipient (might be in different formats)
+    const recipientHex =
+      typeof targetPublicKey === "string" ? targetPublicKey : String(targetPublicKey);
+
+    if (recipientHex !== expectedRecipient) {
+      return {
+        valid: false,
+        error: `Recipient mismatch. Expected ${expectedRecipient}, got ${recipientHex}`,
+        actualAmount: actualAmountCSPR,
+      };
+    }
+
+    // Verify amount (allow 1% tolerance for gas/rounding)
+    const tolerance = expectedAmount * 0.01;
+    if (
+      actualAmountCSPR < expectedAmount - tolerance ||
+      actualAmountCSPR > expectedAmount + tolerance
+    ) {
+      return {
+        valid: false,
+        error: `Amount mismatch. Expected ${expectedAmount} CSPR, got ${actualAmountCSPR} CSPR`,
+        actualAmount: actualAmountCSPR,
+      };
+    }
+
+    return { valid: true, actualAmount: actualAmountCSPR };
+  } catch (error) {
+    return {
+      valid: false,
+      error: error instanceof Error ? error.message : "Unknown error verifying payment",
+    };
+  }
+}
+
+/**
  * Get contract and package hashes from a successful deploy (best-effort parse).
  */
 export async function getContractHashesFromDeploy(
@@ -712,6 +836,163 @@ export function motesToCSPR(motes: number | string | bigint): number {
 export function csprToMotes(cspr: number | string): bigint {
   const csprNumber = typeof cspr === "string" ? Number(cspr) : cspr;
   return BigInt(Math.round(csprNumber * 1_000_000_000));
+}
+
+/**
+ * Load platform token wallet signer from environment variables
+ */
+function loadPlatformTokenWalletSigner(): PrivateKey | null {
+  const privateKeyHex = appConfig.platformTokenWallet.privateKeyHex;
+  const keyAlgo = appConfig.platformTokenWallet.keyAlgo;
+
+  if (!privateKeyHex) {
+    console.warn("[Platform Token Wallet] No private key configured");
+    return null;
+  }
+
+  try {
+    const algorithm = keyAlgo === "secp256k1" ? KeyAlgorithm.SECP256K1 : KeyAlgorithm.ED25519;
+    return PrivateKey.fromHex(privateKeyHex, algorithm);
+  } catch (error) {
+    console.error("[Platform Token Wallet] Failed to load private key:", error);
+    return null;
+  }
+}
+
+/**
+ * Send token transfer from platform wallet to user
+ * Used for buy transactions where platform sends tokens to buyer
+ */
+export async function sendTokenTransfer(params: {
+  projectId: string;
+  tokenContractHash: string;
+  toAddress: string;
+  tokenAmount: number;
+}): Promise<{ deployHash: string }> {
+  const { tokenContractHash, toAddress, tokenAmount } = params;
+
+  // Load platform wallet signer
+  const signer = loadPlatformTokenWalletSigner();
+  if (!signer) {
+    throw new Error(
+      "Platform token wallet not configured. Set PLATFORM_TOKEN_WALLET_PRIVATE_KEY_HEX to send token transfers."
+    );
+  }
+
+  const signerPublicKey = signer.publicKey;
+  const signerPublicKeyHex = signerPublicKey.toHex();
+
+  // Convert token amount to smallest unit (9 decimals)
+  const tokenAmountInMotes = (tokenAmount * 1_000_000_000).toString();
+
+  // Normalize contract hash
+  const normalizedHash = normalizeHash(tokenContractHash);
+
+  // Build CEP-18 transfer deploy
+  const deploy = makeCep18TransferDeploy({
+    contractPackageHash: normalizedHash,
+    senderPublicKeyHex: signerPublicKeyHex,
+    recipientPublicKeyHex: toAddress,
+    transferAmount: tokenAmountInMotes,
+    paymentAmount: TOKEN_TRANSFER_PAYMENT,
+    chainName: NETWORK_NAME,
+    gasPrice: DEFAULT_GAS_PRICE,
+    ttl: DEFAULT_TTL_MS,
+  });
+
+  // Sign the deploy
+  deploy.sign(signer);
+
+  // Log deploy details
+  console.log("[Token Transfer Deploy]", {
+    deployHash: deploy.hash.toHex(),
+    from: signerPublicKeyHex,
+    to: toAddress,
+    tokenAmount,
+    contractHash: normalizedHash,
+  });
+
+  // Verify chain name
+  await verifyChainName();
+
+  // Send deploy to RPC
+  try {
+    await withRpcFallback((client) => client.putDeploy(deploy));
+    console.log(`[Token Transfer] Deploy sent successfully: ${deploy.hash.toHex()}`);
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error(`[Token Transfer] Failed to send deploy:`, errorMsg);
+    throw new Error(`Failed to send token transfer: ${errorMsg}`);
+  }
+
+  return {
+    deployHash: deploy.hash.toHex(),
+  };
+}
+
+/**
+ * Send CSPR transfer from platform wallet to user
+ * Used for sell transactions where platform sends CSPR to seller
+ */
+export async function sendCSPRTransfer(params: {
+  toAddress: string;
+  amountCSPR: number;
+}): Promise<{ deployHash: string }> {
+  const { toAddress, amountCSPR } = params;
+
+  // Load platform wallet signer
+  const signer = loadPlatformTokenWalletSigner();
+  if (!signer) {
+    throw new Error(
+      "Platform token wallet not configured. Set PLATFORM_TOKEN_WALLET_PRIVATE_KEY_HEX to send CSPR transfers."
+    );
+  }
+
+  const signerPublicKey = signer.publicKey;
+  const signerPublicKeyHex = signerPublicKey.toHex();
+
+  // Convert CSPR to motes
+  const amountInMotes = csprToMotes(amountCSPR);
+
+  // Build CSPR transfer deploy
+  const deploy = makeCsprTransferDeploy({
+    senderPublicKeyHex: signerPublicKeyHex,
+    recipientPublicKeyHex: toAddress,
+    transferAmount: amountInMotes.toString(),
+    chainName: NETWORK_NAME,
+    paymentAmount: TRANSFER_PAYMENT,
+    gasPrice: DEFAULT_GAS_PRICE,
+    ttl: DEFAULT_TTL_MS,
+  });
+
+  // Sign the deploy
+  deploy.sign(signer);
+
+  // Log deploy details
+  console.log("[CSPR Transfer Deploy]", {
+    deployHash: deploy.hash.toHex(),
+    from: signerPublicKeyHex,
+    to: toAddress,
+    amountCSPR,
+    amountMotes: amountInMotes.toString(),
+  });
+
+  // Verify chain name
+  await verifyChainName();
+
+  // Send deploy to RPC
+  try {
+    await withRpcFallback((client) => client.putDeploy(deploy));
+    console.log(`[CSPR Transfer] Deploy sent successfully: ${deploy.hash.toHex()}`);
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error(`[CSPR Transfer] Failed to send deploy:`, errorMsg);
+    throw new Error(`Failed to send CSPR transfer: ${errorMsg}`);
+  }
+
+  return {
+    deployHash: deploy.hash.toHex(),
+  };
 }
 
 function validateTokenParams(input: DeployInput): number {

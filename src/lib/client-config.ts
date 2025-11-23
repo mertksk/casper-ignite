@@ -24,6 +24,6 @@ export const publicRuntime = {
   liquidityPoolAddress: publicParsed.data.NEXT_PUBLIC_LIQUIDITY_POOL_ADDRESS,
   platformFeeAmount: 20, // CSPR
   liquidityPoolAmount: 180, // CSPR
-  tokenDeploymentGas: 250, // CSPR - estimated gas for CEP-18 deployment
-  totalPaymentAmount: 450, // CSPR - total user payment (20 + 180 + 250)
+  tokenDeploymentGas: 0, // CSPR - platform pays for token deployment
+  totalPaymentAmount: 200, // CSPR - total user payment (20 + 180, platform pays deployment)
 };

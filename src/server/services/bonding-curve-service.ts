@@ -12,7 +12,7 @@
 
 import { prisma } from "@/lib/db";
 
-const LIQUIDITY_CSPR = 1400; // Initial liquidity in CSPR
+const LIQUIDITY_CSPR = 180; // Initial liquidity in CSPR (from user's liquidity pool payment)
 
 export interface BondingCurveParams {
   projectId: string;
@@ -157,6 +157,9 @@ class BondingCurveService {
     projectId: string,
     tokenAmount: number
   ): Promise<PurchaseCalculation> {
+    // Get current price BEFORE updating anything
+    const currentPrice = await this.getCurrentPrice(projectId);
+
     const calculation = await this.calculatePurchase(projectId, tokenAmount);
 
     // Update bonding curve
@@ -184,6 +187,21 @@ class BondingCurveService {
       },
     });
 
+    // Add price history entry for the trade
+    // For instant trades, we'll create a 1-minute candle with the trade price
+    await prisma.priceHistory.create({
+      data: {
+        projectId,
+        open: currentPrice,
+        high: Math.max(currentPrice, calculation.newPrice),
+        low: Math.min(currentPrice, calculation.newPrice),
+        close: calculation.newPrice,
+        volume: tokenAmount,
+        timestamp: new Date(),
+        interval: "1m",
+      },
+    });
+
     return calculation;
   }
 
@@ -194,6 +212,9 @@ class BondingCurveService {
     projectId: string,
     tokenAmount: number
   ): Promise<SellCalculation> {
+    // Get current price BEFORE updating anything
+    const currentPrice = await this.getCurrentPrice(projectId);
+
     const calculation = await this.calculateSell(projectId, tokenAmount);
     const curve = await prisma.bondingCurve.findUnique({
       where: { projectId },
@@ -225,7 +246,63 @@ class BondingCurveService {
       },
     });
 
+    // Add price history entry for the trade
+    await prisma.priceHistory.create({
+      data: {
+        projectId,
+        open: currentPrice,
+        high: Math.max(currentPrice, calculation.newPrice),
+        low: Math.min(currentPrice, calculation.newPrice),
+        close: calculation.newPrice,
+        volume: tokenAmount,
+        timestamp: new Date(),
+        interval: "1m",
+      },
+    });
+
     return calculation;
+  }
+
+  /**
+   * Get instant buy quote (for UI preview)
+   */
+  async getInstantBuyQuote(projectId: string, tokenAmount: number) {
+    if (tokenAmount <= 0) {
+      throw new Error("Token amount must be positive");
+    }
+
+    const calculation = await this.calculatePurchase(projectId, tokenAmount);
+    const currentPrice = await this.getCurrentPrice(projectId);
+
+    return {
+      tokenAmount,
+      cost: calculation.cost,
+      pricePerToken: calculation.cost / tokenAmount,
+      currentPrice,
+      newPrice: calculation.newPrice,
+      priceImpact: ((calculation.newPrice - currentPrice) / currentPrice) * 100,
+    };
+  }
+
+  /**
+   * Get instant sell quote (for UI preview)
+   */
+  async getInstantSellQuote(projectId: string, tokenAmount: number) {
+    if (tokenAmount <= 0) {
+      throw new Error("Token amount must be positive");
+    }
+
+    const calculation = await this.calculateSell(projectId, tokenAmount);
+    const currentPrice = await this.getCurrentPrice(projectId);
+
+    return {
+      tokenAmount,
+      payout: calculation.proceeds,
+      pricePerToken: calculation.proceeds / tokenAmount,
+      currentPrice,
+      newPrice: calculation.newPrice,
+      priceImpact: ((currentPrice - calculation.newPrice) / currentPrice) * 100,
+    };
   }
 
   /**

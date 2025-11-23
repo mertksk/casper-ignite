@@ -31,16 +31,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  // Verify all three deploys if provided (required for production)
-  const { platformFeeHash, liquidityPoolHash, tokenDeployHash } = parsed.data;
+  // Verify payment deploys (platform deploys token, so user only pays 2 fees)
+  const { platformFeeHash, liquidityPoolHash } = parsed.data;
 
   // In development, payment verification can be skipped
   const requirePaymentVerification = !appConfig.isDev;
 
   if (requirePaymentVerification) {
-    if (!platformFeeHash || !liquidityPoolHash || !tokenDeployHash) {
+    if (!platformFeeHash || !liquidityPoolHash) {
       return NextResponse.json(
-        { error: `Payment verification required. Please complete all three deploys: platform fee (${appConfig.paymentAmounts.platformFee} CSPR), liquidity pool (${appConfig.paymentAmounts.liquidityPool} CSPR), and token deployment (~${appConfig.paymentAmounts.tokenDeployment} CSPR gas).` },
+        { error: `Payment verification required. Please complete both payments: platform fee (${appConfig.paymentAmounts.platformFee} CSPR) and liquidity pool (${appConfig.paymentAmounts.liquidityPool} CSPR). Total: ${appConfig.paymentAmounts.total} CSPR` },
         { status: 400 }
       );
     }
@@ -60,15 +60,6 @@ export async function POST(request: NextRequest) {
       if (!liquidityStatus.executed || !liquidityStatus.success) {
         return NextResponse.json(
           { error: "Liquidity pool payment not confirmed on blockchain. Please wait for confirmation." },
-          { status: 400 }
-        );
-      }
-
-      // Verify token deployment (user's CEP-18 deployment)
-      const tokenStatus = await checkDeployStatus(tokenDeployHash);
-      if (!tokenStatus.executed || !tokenStatus.success) {
-        return NextResponse.json(
-          { error: "Token deployment not confirmed on blockchain. Please wait for confirmation." },
           { status: 400 }
         );
       }

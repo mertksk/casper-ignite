@@ -19,6 +19,9 @@ const envSchema = z.object({
   INDEXER_BATCH_SIZE: z.coerce.number().int().min(1).max(500).default(25),
   PLATFORM_FEE_ADDRESS: z.string().min(1).default("0202a0c94e3f2e9e9f8c0a0a8f8e9d8c7b6a5b4c3d2e1f0a0b1c2d3e4f5a6b7c8d9e"),
   LIQUIDITY_POOL_ADDRESS: z.string().min(1).default("0203b1d05f4g3h2i1j0k9l8m7n6o5p4q3r2s1t0u9v8w7x6y5z4a3b2c1d0e9f8g7h"),
+  PLATFORM_TOKEN_WALLET_ADDRESS: z.string().min(1).default("0204c2e15g5h4i3j2k1l0m9n8o7p6q5r4s3t2u1v0w9x8y7z6a5b4c3d2e1f0g9h8"),
+  PLATFORM_TOKEN_WALLET_PRIVATE_KEY_HEX: z.string().optional(),
+  PLATFORM_TOKEN_WALLET_KEY_ALGO: z.enum(["ed25519", "secp256k1"]).default("ed25519"),
 });
 
 const parsed = envSchema.safeParse({
@@ -41,12 +44,18 @@ export const appConfig = {
   platformAddresses: {
     fee: parsed.data.PLATFORM_FEE_ADDRESS,
     liquidity: parsed.data.LIQUIDITY_POOL_ADDRESS,
+    tokenWallet: parsed.data.PLATFORM_TOKEN_WALLET_ADDRESS,
+  },
+  platformTokenWallet: {
+    address: parsed.data.PLATFORM_TOKEN_WALLET_ADDRESS,
+    privateKeyHex: parsed.data.PLATFORM_TOKEN_WALLET_PRIVATE_KEY_HEX,
+    keyAlgo: parsed.data.PLATFORM_TOKEN_WALLET_KEY_ALGO,
   },
   paymentAmounts: {
     platformFee: 20, // CSPR - goes to platform
-    liquidityPool: 180, // CSPR - goes to liquidity pool
-    tokenDeployment: 250, // CSPR - user pays for their own token deployment gas
-    total: 450, // CSPR - total user payment (20 + 180 + 250)
+    liquidityPool: 180, // CSPR - goes to platform wallet (used for bonding curve reserves)
+    tokenDeployment: 0, // CSPR - platform pays gas for token deployment (not user)
+    total: 200, // CSPR - total user payment (20 + 180, platform pays deployment)
   },
 } as const;
 

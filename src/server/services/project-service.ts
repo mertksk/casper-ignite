@@ -2,8 +2,9 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { projectListQuerySchema, type ProjectListQuery, type ProjectCreateInput, type OrderCreateInput } from "@/lib/dto";
-import { getContractHashesFromDeploy } from "@/lib/casper";
+import { deployProjectToken, sendTokenTransfer, waitForDeploy } from "@/lib/casper";
 import { bondingCurveService } from "./bonding-curve-service";
+import { appConfig } from "@/lib/config";
 
 type ProjectInclude = Prisma.ProjectGetPayload<{
   include: { metrics: true };
@@ -105,9 +106,9 @@ export const projectService = {
           take: 25,
         },
         priceHistory: {
-          where: { interval: "1h" },
+          where: { interval: "1m" },
           orderBy: { timestamp: "asc" },
-          take: 48, // Last 48 hours
+          take: 100, // Last 100 trades
         },
       },
     });
@@ -135,24 +136,31 @@ export const projectService = {
   },
 
   async createProject(input: ProjectCreateInput) {
-    // Step 1: Extract contract hash from user's token deployment
-    // In development, if tokenDeployHash is not provided, we'll set status to PENDING
-    let contractHash: string | null = null;
-    let contractPackageHash: string | null = null;
-    let tokenStatus: "PENDING" | "DEPLOYED" = "PENDING";
+    // Step 1: Platform deploys token on behalf of user
+    console.log(`[Project Creation] Deploying token ${input.tokenSymbol} for ${input.creatorAddress}`);
 
-    if (input.tokenDeployHash) {
-      const hashes = await getContractHashesFromDeploy(input.tokenDeployHash);
-      contractHash = hashes.contractHash;
-      contractPackageHash = hashes.contractPackageHash;
-      tokenStatus = contractHash ? "DEPLOYED" : "PENDING";
+    const tokenDeployResult = await deployProjectToken({
+      projectName: input.title,
+      symbol: input.tokenSymbol,
+      totalSupply: input.tokenSupply,
+      creatorPublicKey: appConfig.platformAddresses.tokenWallet, // Platform wallet owns tokens initially
+    });
 
-      if (!contractHash) {
-        throw new Error("Token deployment hash provided but contract hash could not be extracted. Please ensure the deploy was successful.");
-      }
+    const contractHash = tokenDeployResult.contractHash;
+    const contractPackageHash = tokenDeployResult.contractPackageHash;
+    const deployHash = tokenDeployResult.deployHash;
+
+    if (!contractHash) {
+      throw new Error("Token deployment failed - contract hash could not be extracted");
     }
 
-    // Step 2: Create project with all new fields
+    // Step 2: Calculate token distribution
+    const creatorTokenAmount = (input.tokenSupply * input.ownershipPercent) / 100;
+    const platformTokenAmount = input.tokenSupply - creatorTokenAmount;
+
+    console.log(`[Token Distribution] Total: ${input.tokenSupply}, Creator: ${creatorTokenAmount}, Platform: ${platformTokenAmount}`);
+
+    // Step 3: Create project with all fields
     const project = await prisma.project.create({
       data: {
         title: input.title,
@@ -163,18 +171,23 @@ export const projectService = {
         creatorAddress: input.creatorAddress,
         tokenContractHash: contractHash,
         tokenPackageHash: contractPackageHash,
-        tokenStatus,
+        tokenStatus: "DEPLOYED",
 
         // New fields
         category: input.category as Prisma.ProjectCreateInput["category"],
         roadmap: input.roadmap,
         fundingGoal: input.fundingGoal,
-        marketLevel: "PRE_MARKET", // All new projects start in pre-market
+        marketLevel: "PRE_MARKET",
+
+        // Token distribution
+        creatorTokenAmount,
+        platformTokenAmount,
+        deployedBy: "PLATFORM",
 
         // Store payment deploy hashes for audit trail
         platformFeeHash: input.platformFeeHash ?? null,
         liquidityPoolHash: input.liquidityPoolHash ?? null,
-        tokenDeployHash: input.tokenDeployHash ?? null,
+        tokenDeployHash: deployHash,
 
         metrics: {
           create: {
@@ -188,7 +201,37 @@ export const projectService = {
       include: projectWithMetrics.include,
     });
 
-    // Step 3: Initialize bonding curve
+    // Step 4: Transfer creator's portion of tokens (if > 0)
+    if (creatorTokenAmount > 0) {
+      console.log(`[Token Distribution] Transferring ${creatorTokenAmount} tokens to creator ${input.creatorAddress}`);
+
+      const transferResult = await sendTokenTransfer({
+        projectId: project.id,
+        tokenContractHash: contractHash,
+        toAddress: input.creatorAddress,
+        tokenAmount: creatorTokenAmount,
+      });
+
+      // Wait for confirmation (with 5-minute timeout)
+      console.log(`[Token Distribution] Waiting for confirmation of deploy ${transferResult.deployHash}`);
+      const confirmed = await waitForDeploy(transferResult.deployHash, 300_000);
+
+      if (!confirmed.success) {
+        console.error(`[Token Distribution] FAILED - Deploy hash: ${transferResult.deployHash}`);
+        // TODO: Add to admin review queue for manual resolution
+        throw new Error(`Token transfer to creator failed. Deploy hash: ${transferResult.deployHash}`);
+      }
+
+      // Update project with distribution hash
+      await prisma.project.update({
+        where: { id: project.id },
+        data: { tokenDistributionHash: transferResult.deployHash },
+      });
+
+      console.log(`[Token Distribution] SUCCESS - ${creatorTokenAmount} tokens transferred to creator`);
+    }
+
+    // Step 5: Initialize bonding curve
     await bondingCurveService.initialize({
       projectId: project.id,
       initialPrice: 0.001, // Starting price: 0.001 CSPR per token
@@ -196,6 +239,7 @@ export const projectService = {
       totalSupply: project.tokenSupply,
     });
 
+    console.log(`[Project Creation] Complete - Project ID: ${project.id}`);
     return mapProject(project);
   },
 

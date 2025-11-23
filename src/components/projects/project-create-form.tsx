@@ -10,9 +10,9 @@ import { Textarea } from "../ui/textarea";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader } from "../ui/card";
 import { useCasperWallet } from "@/hooks/useCasperWallet";
-import { buildClientTokenDeploy, buildTransferDeploy } from "@/lib/casper-client";
+import { buildTransferDeploy } from "@/lib/casper-client";
 
-type DeploymentStep = 'idle' | 'platform-fee' | 'liquidity-pool' | 'token-deploy' | 'submitting' | 'done';
+type DeploymentStep = 'idle' | 'platform-fee' | 'liquidity-pool' | 'submitting' | 'done';
 
 export function ProjectCreateForm() {
   const { publicKey, isConnected, signDeploy } = useCasperWallet();
@@ -51,7 +51,7 @@ export function ProjectCreateForm() {
     try {
       // Step 1: Platform fee payment (20 CSPR)
       setDeploymentStep('platform-fee');
-      setMessage(`Step 1/3: Sending platform fee (${publicRuntime.platformFeeAmount} CSPR)...`);
+      setMessage(`Step 1/2: Sending platform fee (${publicRuntime.platformFeeAmount} CSPR)...`);
 
       const platformFeeDeploy = buildTransferDeploy({
         fromPublicKey: publicKey,
@@ -67,7 +67,7 @@ export function ProjectCreateForm() {
 
       // Step 2: Liquidity pool payment (180 CSPR)
       setDeploymentStep('liquidity-pool');
-      setMessage(`Step 2/3: Sending liquidity pool (${publicRuntime.liquidityPoolAmount} CSPR)...`);
+      setMessage(`Step 2/2: Sending liquidity pool (${publicRuntime.liquidityPoolAmount} CSPR)...`);
 
       const liquidityPoolDeploy = buildTransferDeploy({
         fromPublicKey: publicKey,
@@ -81,26 +81,9 @@ export function ProjectCreateForm() {
       }
       const liquidityPoolHash = liquidityPoolDeploy.deployHash;
 
-      // Step 3: Token deployment (~250 CSPR gas)
-      setDeploymentStep('token-deploy');
-      setMessage(`Step 3/3: Deploying CEP-18 token (${values.tokenSymbol})...`);
-
-      const tokenDeploy = await buildClientTokenDeploy({
-        projectName: values.title,
-        symbol: values.tokenSymbol,
-        totalSupply: values.tokenSupply,
-        creatorPublicKey: publicKey,
-      });
-
-      const tokenSignature = await signDeploy(tokenDeploy.deployJson as string);
-      if (tokenSignature.cancelled) {
-        throw new Error(tokenSignature.message || "Token deployment was cancelled");
-      }
-      const tokenDeployHash = tokenDeploy.deployHash;
-
-      // Step 4: Submit project to backend
+      // Step 3: Submit project to backend (platform will deploy token)
       setDeploymentStep('submitting');
-      setMessage("Submitting project to platform...");
+      setMessage("Submitting project... Platform is deploying your token and distributing ownership...");
 
       const response = await fetch("/api/projects", {
         method: "POST",
@@ -109,7 +92,6 @@ export function ProjectCreateForm() {
           ...values,
           platformFeeHash,
           liquidityPoolHash,
-          tokenDeployHash,
         }),
       });
 
