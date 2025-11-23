@@ -77,7 +77,7 @@ export default function HowItWorksPage() {
                 <strong>What happens behind the scenes:</strong>
               </p>
               <ul className="space-y-1 pl-5 text-sm list-disc">
-                <li>Platform deploys your CEP-18 token (you don't pay gas!)</li>
+                <li>Platform deploys your CEP-18 token (you don&apos;t pay gas!)</li>
                 <li>Tokens are minted to platform wallet</li>
                 <li>Your ownership % is automatically transferred to your wallet</li>
                 <li>Remaining tokens go into the bonding curve for trading</li>
@@ -296,7 +296,7 @@ export default function HowItWorksPage() {
             <div>
               <h3 className="mb-3 text-xl font-bold text-brand-800">Token Standard</h3>
               <p className="text-brand-700">
-                All tokens are deployed using the <strong>CEP-18</strong> standard (Casper's
+                All tokens are deployed using the <strong>CEP-18</strong> standard (Casper&apos;s
                 equivalent of ERC-20). This ensures compatibility with all Casper wallets
                 and future DEX integrations.
               </p>
@@ -347,7 +347,7 @@ export default function HowItWorksPage() {
               <h3 className="mb-3 text-xl font-bold text-brand-800">Platform Architecture</h3>
               <ol className="space-y-2 pl-5 text-brand-700 list-decimal">
                 <li><strong>Token Deployment:</strong> Platform wallet deploys CEP-18 contracts</li>
-                <li><strong>Token Distribution:</strong> Automatic transfer of creator's ownership %</li>
+                <li><strong>Token Distribution:</strong> Automatic transfer of creator&apos;s ownership %</li>
                 <li><strong>Bonding Curve:</strong> Manages pricing and liquidity algorithmically</li>
                 <li><strong>Trading Engine:</strong> Executes instant buys/sells with blockchain confirmation</li>
                 <li><strong>Monitoring:</strong> Real-time health checks and alerting system</li>
@@ -373,7 +373,7 @@ export default function HowItWorksPage() {
             <CardContent>
               <p className="text-brand-700">
                 200 CSPR total: 20 CSPR platform fee + 180 CSPR initial liquidity pool.
-                The platform pays the token deployment gas (~250 CSPR), so you don't have to!
+                The platform pays the token deployment gas (~250 CSPR), so you don&apos;t have to!
               </p>
             </CardContent>
           </Card>
@@ -415,7 +415,7 @@ export default function HowItWorksPage() {
             <CardContent>
               <p className="text-brand-700">
                 Our platform has automatic rollback. If a blockchain transaction fails, all
-                database changes are reversed, and you'll receive an error message. Your funds
+                database changes are reversed, and you&apos;ll receive an error message. Your funds
                 remain safe.
               </p>
             </CardContent>

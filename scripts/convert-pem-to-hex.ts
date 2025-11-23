@@ -30,9 +30,12 @@ function convertPemToHex() {
     const privateKey = PrivateKey.fromPem(pemKey, KeyAlgorithm.ED25519);
 
     // Get HEX representations
-    const privateKeyHex = privateKey.toHex();
+    // Access the raw private key bytes from the internal structure
+    const privateKeyBytes = (privateKey as any).priv.key;
+    const privateKeyHex = Buffer.from(privateKeyBytes).toString("hex");
     const publicKeyHex = privateKey.publicKey.toHex();
-    const publicKeyFormatted = privateKey.publicKey.toAccountHashStr();
+    const accountHash = privateKey.publicKey.accountHash();
+    const publicKeyFormatted = accountHash.toPrefixedString();
 
     console.log("✅ Conversion Successful!\n");
     console.log("=".repeat(80));
