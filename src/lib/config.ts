@@ -22,6 +22,13 @@ const envSchema = z.object({
   PLATFORM_TOKEN_WALLET_ADDRESS: z.string().min(1).default("0204c2e15g5h4i3j2k1l0m9n8o7p6q5r4s3t2u1v0w9x8y7z6a5b4c3d2e1f0g9h8"),
   PLATFORM_TOKEN_WALLET_PRIVATE_KEY_HEX: z.string().optional(),
   PLATFORM_TOKEN_WALLET_KEY_ALGO: z.enum(["ed25519", "secp256k1"]).default("ed25519"),
+  // Token Vault Contract Configuration
+  VAULT_CONTRACT_ACCOUNT_HASH: z.string().optional(),
+  VAULT_CONTRACT_HASH: z.string().optional(), // Contract hash for calling entry points
+  VAULT_ADMIN_PRIVATE_KEY_HEX: z.string().optional(),
+  VAULT_ADMIN_KEY_ALGO: z.enum(["ed25519", "secp256k1"]).default("ed25519"),
+  // AMM Contract Configuration
+  AMM_CONTRACT_HASH: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse({
@@ -50,6 +57,15 @@ export const appConfig = {
     address: parsed.data.PLATFORM_TOKEN_WALLET_ADDRESS,
     privateKeyHex: parsed.data.PLATFORM_TOKEN_WALLET_PRIVATE_KEY_HEX,
     keyAlgo: parsed.data.PLATFORM_TOKEN_WALLET_KEY_ALGO,
+  },
+  vault: {
+    accountHash: parsed.data.VAULT_CONTRACT_ACCOUNT_HASH,
+    contractHash: parsed.data.VAULT_CONTRACT_HASH,
+    adminPrivateKeyHex: parsed.data.VAULT_ADMIN_PRIVATE_KEY_HEX,
+    adminKeyAlgo: parsed.data.VAULT_ADMIN_KEY_ALGO,
+  },
+  amm: {
+    contractHash: parsed.data.AMM_CONTRACT_HASH,
   },
   paymentAmounts: {
     platformFee: 20, // CSPR - goes to platform

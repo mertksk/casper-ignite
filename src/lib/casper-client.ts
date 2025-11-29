@@ -101,6 +101,88 @@ export async function buildClientTokenDeploy(input: TokenDeployInput) {
 }
 
 /**
+ * Fetch lock_cspr session WASM from public directory
+ */
+async function fetchLockCsprWasm(): Promise<Uint8Array> {
+  const response = await fetch("/wasm/lock_cspr_session.wasm");
+  if (!response.ok) {
+    throw new Error(
+      "Failed to fetch lock_cspr session WASM. Ensure lock_cspr_session.wasm is in public/wasm/ directory."
+    );
+  }
+  const arrayBuffer = await response.arrayBuffer();
+  return new Uint8Array(arrayBuffer);
+}
+
+/**
+ * Build a lock_cspr session deploy for locking CSPR in the vault.
+ * The session code transfers CSPR from the caller's main purse to the vault contract.
+ */
+export async function buildLockCsprDeploy(params: {
+  senderPublicKey: string;
+  vaultContractHash: string; // The contract hash of the token vault (without "hash-" prefix)
+  orderId: string;
+  amountMotes: string; // Amount in motes to lock
+  chainName?: string;
+  paymentAmount?: string;
+}) {
+  const {
+    senderPublicKey,
+    vaultContractHash,
+    orderId,
+    amountMotes,
+    chainName = publicRuntime.chainName,
+    paymentAmount = "3000000000", // 3 CSPR for gas (session code + transfer)
+  } = params;
+
+  const wasmBytes = await fetchLockCsprWasm();
+  const accountKey = PublicKey.fromHex(senderPublicKey);
+
+  // Build runtime args for the session contract
+  // The vault contract hash needs to be passed as a ContractHash (32 bytes)
+  const cleanHash = vaultContractHash.replace("contract-", "").replace("hash-", "");
+  const contractHashBytes = new Uint8Array(
+    (cleanHash.match(/.{2}/g) || []).map((byte) => parseInt(byte, 16))
+  );
+
+  const runtimeArgs = Args.fromMap({
+    vault_contract_hash: CLValue.newCLByteArray(contractHashBytes),
+    order_id: CLValue.newCLString(orderId),
+    amount: CLValue.newCLUInt512(amountMotes),
+  });
+
+  const session = new ExecutableDeployItem();
+  session.moduleBytes = new ModuleBytes(wasmBytes, runtimeArgs);
+
+  const payment = ExecutableDeployItem.standardPayment(paymentAmount);
+
+  const header = new DeployHeader(
+    chainName,
+    [],
+    DEFAULT_GAS_PRICE,
+    new Timestamp(new Date(Date.now() - 20000)), // 20s buffer for clock skew
+    new Duration(DEFAULT_TTL_MS),
+    accountKey
+  );
+
+  const deploy = Deploy.makeDeploy(header, payment, session);
+  const deployJson = Deploy.toJSON(deploy);
+
+  if (!deployJson) {
+    throw new Error("Failed to serialize lock_cspr deploy to JSON");
+  }
+
+  return {
+    deploy,
+    deployJson,
+    deployHash: deploy.hash.toHex(),
+    orderId,
+    amountMotes,
+    vaultContractHash,
+  };
+}
+
+/**
  * Build a simple CSPR transfer deploy for wallet signing
  */
 export function buildTransferDeploy(params: {

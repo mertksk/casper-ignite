@@ -1,0 +1,14 @@
+# Secret keys - NEVER commit these!
+keys/secret_key.pem
+**/secret_key.pem
+
+# Build artifacts
+target/
+**/target/
+
+# LMDB test database
+.casperlabs/
+.lmdb/
+
+# OS files
+.DS_Store
