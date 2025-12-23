@@ -40,7 +40,7 @@ class BondingCurveService {
    * Initialize bonding curve for a new project
    */
   async initialize(params: BondingCurveParams): Promise<void> {
-    const { projectId, initialPrice, reserveRatio } = params;
+    const { projectId, initialPrice, reserveRatio, totalSupply } = params;
 
     await prisma.bondingCurve.create({
       data: {
@@ -49,6 +49,21 @@ class BondingCurveService {
         reserveRatio,
         currentSupply: 0, // Start with 0 sold
         reserveBalance: LIQUIDITY_CSPR, // Initial liquidity from 2000 CSPR payment
+      },
+    });
+
+    // Update project metrics with initial values
+    // CSPR price ~$0.02 for liquidity USD estimate
+    const csprPriceUsd = 0.02;
+    const liquidityUsd = LIQUIDITY_CSPR * csprPriceUsd;
+    const initialMarketCap = initialPrice * totalSupply * csprPriceUsd;
+
+    await prisma.projectMetric.update({
+      where: { projectId },
+      data: {
+        currentPrice: initialPrice,
+        liquidityUsd,
+        marketCap: initialMarketCap,
       },
     });
   }

@@ -37,9 +37,26 @@ export async function POST(request: NextRequest) {
 
     // Add the signature
     const publicKey = PublicKey.fromHex(signerPublicKey);
-    const signatureBytes = new Uint8Array(
+
+    // Parse raw signature bytes from wallet
+    const rawSignatureBytes = new Uint8Array(
       (signatureHex.match(/.{2}/g) || []).map((byte: string) => parseInt(byte, 16))
     );
+
+    // Determine algorithm tag from public key (01 = Ed25519, 02 = Secp256k1)
+    const algorithmTag = parseInt(signerPublicKey.slice(0, 2), 16);
+
+    // Prepend algorithm tag if not already present
+    let signatureBytes: Uint8Array;
+    if (rawSignatureBytes[0] === 1 || rawSignatureBytes[0] === 2) {
+      // Signature already has algorithm tag
+      signatureBytes = rawSignatureBytes;
+    } else {
+      // Add algorithm tag to signature
+      signatureBytes = new Uint8Array(rawSignatureBytes.length + 1);
+      signatureBytes[0] = algorithmTag;
+      signatureBytes.set(rawSignatureBytes, 1);
+    }
 
     const signedDeploy = Deploy.setSignature(deploy, signatureBytes, publicKey);
 

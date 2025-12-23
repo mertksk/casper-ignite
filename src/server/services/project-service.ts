@@ -101,6 +101,7 @@ export const projectService = {
       where: { id },
       include: {
         metrics: true,
+        bondingCurve: true,
         orders: {
           orderBy: { createdAt: "desc" },
           take: 25,
@@ -114,8 +115,46 @@ export const projectService = {
     });
     if (!project) return null;
 
+    // Compute metrics from bonding curve if stored metrics are zero
+    let metrics = {
+      currentPrice: project.metrics?.currentPrice ?? 0,
+      marketCap: project.metrics?.marketCap ?? 0,
+      liquidityUsd: project.metrics?.liquidityUsd ?? 0,
+      totalInvestors: project.metrics?.totalInvestors ?? 0,
+    };
+
+    if (project.bondingCurve && metrics.currentPrice === 0) {
+      const curve = project.bondingCurve;
+      const slope = curve.initialPrice * curve.reserveRatio * 0.0001;
+      const currentPrice = curve.initialPrice + slope * curve.currentSupply;
+      const csprPriceUsd = 0.02;
+
+      metrics = {
+        currentPrice,
+        marketCap: currentPrice * project.tokenSupply * csprPriceUsd,
+        liquidityUsd: curve.reserveBalance * csprPriceUsd,
+        totalInvestors: metrics.totalInvestors,
+      };
+    }
+
     return {
-      ...mapProject(project),
+      id: project.id,
+      title: project.title,
+      description: project.description,
+      tokenSymbol: project.tokenSymbol,
+      tokenSupply: project.tokenSupply,
+      ownershipPercent: project.ownershipPercent,
+      creatorAddress: project.creatorAddress,
+      tokenContractHash: project.tokenContractHash,
+      tokenPackageHash: project.tokenPackageHash,
+      tokenStatus: project.tokenStatus,
+      createdAt: project.createdAt.toISOString(),
+      marketLevel: project.marketLevel,
+      category: project.category,
+      roadmap: project.roadmap,
+      fundingGoal: project.fundingGoal,
+      approvedAt: project.approvedAt?.toISOString() ?? null,
+      metrics,
       orders: project.orders.map((order) => ({
         id: order.id,
         wallet: order.wallet,

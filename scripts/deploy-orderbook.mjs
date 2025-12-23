@@ -79,7 +79,7 @@ async function main() {
     [],
     1,
     new Timestamp(new Date()),
-    new Duration(1800000),
+    new Duration(7200000), // 2 hours TTL
     publicKey
   );
 
