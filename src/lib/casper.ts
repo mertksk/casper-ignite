@@ -1,4 +1,4 @@
-import "server-only";
+// import "server-only";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { createHash } from "crypto";
@@ -72,14 +72,30 @@ async function verifyChainName(): Promise<void> {
   }
 }
 
-function withRpcFallback<T>(fn: (client: RpcClient) => Promise<T>): Promise<T> {
-  return fn(getRpcClient()).catch(async (primaryError) => {
-    if (!appConfig.rpcUrls.fallback || appConfig.rpcUrls.fallback === appConfig.rpcUrls.primary) {
-      throw primaryError;
+// Known reliable testnet nodes to fallback to vs just the primary
+const FALLBACK_NODES = [
+  "http://136.243.187.84:7777/rpc",
+  "http://5.9.6.51:7777/rpc",
+];
+
+async function withRpcFallback<T>(fn: (client: RpcClient) => Promise<T>): Promise<T> {
+  const primaryUrl = appConfig.rpcUrls.primary;
+  const nodes = [primaryUrl, ...FALLBACK_NODES];
+
+  let lastError: any;
+
+  for (const nodeUrl of nodes) {
+    try {
+      const client = buildRpcClient(nodeUrl);
+      return await fn(client);
+    } catch (err) {
+      console.warn(`[RPC] Failed to query node ${nodeUrl}:`, err instanceof Error ? err.message : String(err));
+      lastError = err;
+      // Continue to next node
     }
-    const fallbackClient = buildRpcClient(appConfig.rpcUrls.fallback);
-    return fn(fallbackClient);
-  });
+  }
+
+  throw lastError ?? new Error("All RPC nodes failed");
 }
 
 function normalizeHash(hash: string): string {
@@ -107,12 +123,36 @@ function buildCep18RuntimeArgs(input: DeployInput): Args {
     BigInt(10) ** BigInt(decimals)
   ).toString();
 
-  return Args.fromMap({
-    name: CLValue.newCLString(input.projectName),
-    symbol: CLValue.newCLString(input.symbol),
-    decimals: CLValue.newCLUint8(decimals),
-    total_supply: CLValue.newCLUInt256(supplyWithDecimals),
+  // Build individual CLValues for debugging
+  const nameValue = CLValue.newCLString(input.projectName);
+  const symbolValue = CLValue.newCLString(input.symbol);
+  const decimalsValue = CLValue.newCLUint8(decimals);
+  const totalSupplyValue = CLValue.newCLUInt256(supplyWithDecimals);
+
+  // Debug log the CLValues
+  console.log("[CEP18 ARGS DEBUG]", {
+    name: { value: input.projectName, bytes: Buffer.from(nameValue.bytes()).toString("hex") },
+    symbol: { value: input.symbol, bytes: Buffer.from(symbolValue.bytes()).toString("hex") },
+    decimals: { value: decimals, bytes: Buffer.from(decimalsValue.bytes()).toString("hex") },
+    total_supply: { value: supplyWithDecimals, bytes: Buffer.from(totalSupplyValue.bytes()).toString("hex") },
   });
+
+  const args = Args.fromMap({
+    name: nameValue,
+    symbol: symbolValue,
+    decimals: decimalsValue,
+    total_supply: totalSupplyValue,
+    events_mode: CLValue.newCLUint8(1), // 1 = CEP18 events
+    enable_mint_burn: CLValue.newCLUint8(0), // 0 = false
+  });
+
+  // Also log the full args bytes
+  console.log("[CEP18 ARGS FULL]", {
+    argsBytes: Buffer.from(args.toBytes()).toString("hex"),
+    argsCount: 4,
+  });
+
+  return args;
 }
 
 function buildUnsignedTokenDeploy(input: DeployInput, deployerPublicKey?: PublicKey) {
@@ -187,12 +227,12 @@ async function checkDeployerBalance(publicKeyHex: string, requiredMotes: string)
 
     // Try different case variations (account vs Account)
     const account = resultRaw.Account ??
-                    resultRaw.storedValue?.account ??
-                    resultRaw.stored_value?.account ??
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    (resultRaw as any).storedValue?.Account ??
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    (resultRaw as any).stored_value?.Account;
+      resultRaw.storedValue?.account ??
+      resultRaw.stored_value?.account ??
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (resultRaw as any).storedValue?.Account ??
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (resultRaw as any).stored_value?.Account;
 
     if (!account) {
       // If we get a result but no account object, it might mean account doesn't exist
@@ -323,8 +363,11 @@ function validateDeploy(deploy: Deploy, signerPublicKeyHex: string) {
  * Deploy a CEP-18 token contract on the configured network.
  * Requires a server-side signer (CSPR_DEPLOYER_PRIVATE_KEY_* environment variables).
  */
-export async function deployProjectToken(input: DeployInput): Promise<{
-  contractHash: string;
+export async function deployProjectToken(
+  input: DeployInput,
+  options: { waitForConfirmation?: boolean } = { waitForConfirmation: true }
+): Promise<{
+  contractHash?: string;
   contractPackageHash?: string;
   deployHash: string;
 }> {
@@ -417,7 +460,17 @@ export async function deployProjectToken(input: DeployInput): Promise<{
   }
 
   const deployHash = unsigned.deploy.hash.toHex();
-  const waitResult = await waitForDeploy(deployHash, 300_000);
+
+  // If waiting is disabled, return successfully immediately after submission
+  if (!options.waitForConfirmation) {
+    console.info(`[DEPLOY] Submitted deploy ${deployHash}, skipping wait.`);
+    return {
+      deployHash,
+      // We don't have contractHash yet
+    };
+  }
+
+  const waitResult = await waitForDeploy(deployHash);
 
   if (!waitResult.executed || !waitResult.success) {
     throw new Error(waitResult.error ?? "Token deployment failed on-chain");
@@ -437,9 +490,9 @@ export async function deployProjectToken(input: DeployInput): Promise<{
   });
 
   return {
-    contractHash: hashes.contractHash,
-    contractPackageHash: hashes.contractPackageHash ?? undefined,
     deployHash,
+    contractHash: hashes.contractHash!,
+    contractPackageHash: hashes.contractPackageHash ?? undefined,
   };
 }
 
@@ -765,19 +818,43 @@ export function createTokenTransferParams(
  */
 export async function waitForDeploy(
   deployHash: string,
-  timeoutMs: number = 300_000
+  timeoutMs: number = 1800_000 // Default 30 minutes (increased from 15m)
 ): Promise<{ executed: boolean; success: boolean; error?: string }> {
   const cleanHash = normalizeHash(deployHash);
   const start = Date.now();
+  let attempt = 0;
+
+  console.log(`[WaitForDeploy] Starting poll for ${cleanHash} with timeout ${timeoutMs}ms`);
 
   while (Date.now() - start < timeoutMs) {
-    const status = await checkDeployStatus(cleanHash);
-    if (status.executed) {
-      return status;
+    attempt++;
+    try {
+      const status = await checkDeployStatus(cleanHash);
+
+      // If executed, return result immediately
+      if (status.executed) {
+        console.log(`[WaitForDeploy] Deploy ${cleanHash} executed. Success: ${status.success}`);
+        return status;
+      }
+
+      // If checkDeployStatus returned an error (e.g. timeout inside it), just log and retry
+      if (status.error) {
+        if (attempt % 6 === 0) { // Log every ~30s
+          console.warn(`[WaitForDeploy] Transient error checking status (attempt ${attempt}): ${status.error}`);
+        }
+      }
+    } catch (err) {
+      // Catch any unexpected network errors that might have escaped checkDeployStatus
+      if (attempt % 6 === 0) {
+        console.warn(`[WaitForDeploy] Network error polling status (attempt ${attempt}): ${err}`);
+      }
     }
+
+    // Wait 5 seconds before next try
     await new Promise((resolve) => setTimeout(resolve, 5_000));
   }
 
+  console.error(`[WaitForDeploy] Timeout exceeded for ${cleanHash} after ${timeoutMs}ms`);
   return { executed: false, success: false, error: "Deploy timeout exceeded" };
 }
 

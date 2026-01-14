@@ -10,7 +10,7 @@ import { Textarea } from "../ui/textarea";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader } from "../ui/card";
 import { useCasperWallet } from "@/hooks/useCasperWallet";
-import { buildTransferDeploy } from "@/lib/casper-client";
+import { buildTransferDeploy, sendSignedDeploy } from "@/lib/casper-client";
 
 type DeploymentStep = 'idle' | 'platform-fee' | 'liquidity-pool' | 'submitting' | 'done';
 
@@ -30,7 +30,7 @@ export function ProjectCreateForm() {
       fundingGoal: 10_000,
     },
   });
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<React.ReactNode | null>(null);
   const [deploymentStep, setDeploymentStep] = useState<DeploymentStep>('idle');
 
   // Auto-fill creator address when wallet is connected
@@ -59,15 +59,27 @@ export function ProjectCreateForm() {
         amount: (publicRuntime.platformFeeAmount * 1_000_000_000).toString(), // Convert to motes
       });
 
-      const platformFeeSignature = await signDeploy(platformFeeDeploy.deployJson as string);
+      const platformFeeSignature = await signDeploy(JSON.stringify(platformFeeDeploy.deployJson));
       if (platformFeeSignature.cancelled) {
         throw new Error(platformFeeSignature.message || "Platform fee payment was cancelled");
       }
-      const platformFeeHash = platformFeeDeploy.deployHash;
+
+      setMessage(`Step 1/2: Submitting platform fee to network...`);
+      const platformFeeHash = await sendSignedDeploy(
+        platformFeeDeploy.deployJson,
+        platformFeeSignature.signatureHex,
+        publicKey
+      );
 
       // Step 2: Liquidity pool payment (180 CSPR)
       setDeploymentStep('liquidity-pool');
-      setMessage(`Step 2/2: Sending liquidity pool (${publicRuntime.liquidityPoolAmount} CSPR)...`);
+      setMessage(
+        <span>
+          Step 1 Confirmed! <a href={`https://testnet.cspr.live/deploy/${platformFeeHash}`} target="_blank" rel="noreferrer" className="underline text-blue-600">View Fee Tx</a>
+          <br />
+          Step 2/2: Sending liquidity pool (${publicRuntime.liquidityPoolAmount} CSPR)...
+        </span>
+      );
 
       const liquidityPoolDeploy = buildTransferDeploy({
         fromPublicKey: publicKey,
@@ -75,15 +87,32 @@ export function ProjectCreateForm() {
         amount: (publicRuntime.liquidityPoolAmount * 1_000_000_000).toString(),
       });
 
-      const liquidityPoolSignature = await signDeploy(liquidityPoolDeploy.deployJson as string);
+      const liquidityPoolSignature = await signDeploy(JSON.stringify(liquidityPoolDeploy.deployJson));
       if (liquidityPoolSignature.cancelled) {
         throw new Error(liquidityPoolSignature.message || "Liquidity pool payment was cancelled");
       }
-      const liquidityPoolHash = liquidityPoolDeploy.deployHash;
+
+      setMessage(`Step 2/2: Submitting liquidity pool payment to network...`);
+      const liquidityPoolHash = await sendSignedDeploy(
+        liquidityPoolDeploy.deployJson,
+        liquidityPoolSignature.signatureHex,
+        publicKey
+      );
 
       // Step 3: Submit project to backend (platform will deploy token)
       setDeploymentStep('submitting');
-      setMessage("Submitting project... Platform is deploying your token and distributing ownership...");
+      setMessage(
+        <span>
+          Payments Signed!
+          <br />
+          <a href={`https://testnet.cspr.live/deploy/${platformFeeHash}`} target="_blank" rel="noreferrer" className="underline text-blue-600">View Fee Tx</a> |
+          <a href={`https://testnet.cspr.live/deploy/${liquidityPoolHash}`} target="_blank" rel="noreferrer" className="underline text-blue-600 ml-2">View Pool Tx</a>
+          <br /><br />
+          <strong>Submitting project...</strong>
+          <br />
+          Platform is deploying your token and distributing ownership... (This may take up to 15 mins)
+        </span>
+      );
 
       const response = await fetch("/api/projects", {
         method: "POST",

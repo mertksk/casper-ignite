@@ -2,7 +2,7 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { projectListQuerySchema, type ProjectListQuery, type ProjectCreateInput, type OrderCreateInput } from "@/lib/dto";
-import { deployProjectToken, sendTokenTransfer, waitForDeploy } from "@/lib/casper";
+import { deployProjectToken, sendTokenTransfer, waitForDeploy, checkDeployStatus, getContractHashesFromDeploy } from "@/lib/casper";
 import { bondingCurveService } from "./bonding-curve-service";
 import { appConfig } from "@/lib/config";
 
@@ -115,6 +115,11 @@ export const projectService = {
     });
     if (!project) return null;
 
+    // Self-healing: If pending, check if it finished in background
+    if (project.tokenStatus === 'PENDING' && project.tokenDeployHash) {
+      checkAndHealProject(project).catch(err => console.error("Self-healing background check error:", err));
+    }
+
     // Compute metrics from bonding curve if stored metrics are zero
     let metrics = {
       currentPrice: project.metrics?.currentPrice ?? 0,
@@ -183,15 +188,13 @@ export const projectService = {
       symbol: input.tokenSymbol,
       totalSupply: input.tokenSupply,
       creatorPublicKey: appConfig.platformAddresses.tokenWallet, // Platform wallet owns tokens initially
-    });
+    }, { waitForConfirmation: false }); // Skip waiting to prevent timeouts
 
-    const contractHash = tokenDeployResult.contractHash;
-    const contractPackageHash = tokenDeployResult.contractPackageHash;
+    const contractHash = tokenDeployResult.contractHash ?? null;
+    const contractPackageHash = tokenDeployResult.contractPackageHash ?? null;
     const deployHash = tokenDeployResult.deployHash;
 
-    if (!contractHash) {
-      throw new Error("Token deployment failed - contract hash could not be extracted");
-    }
+    console.log(`[Token Deploy] View on Explorer: https://testnet.cspr.live/deploy/${deployHash}`);
 
     // Step 2: Calculate token distribution
     const creatorTokenAmount = (input.tokenSupply * input.ownershipPercent) / 100;
@@ -200,48 +203,65 @@ export const projectService = {
     console.log(`[Token Distribution] Total: ${input.tokenSupply}, Creator: ${creatorTokenAmount}, Platform: ${platformTokenAmount}`);
 
     // Step 3: Create project with all fields
-    const project = await prisma.project.create({
-      data: {
-        title: input.title,
-        description: input.description,
-        tokenSymbol: input.tokenSymbol,
-        tokenSupply: input.tokenSupply,
-        ownershipPercent: input.ownershipPercent,
-        creatorAddress: input.creatorAddress,
-        tokenContractHash: contractHash,
-        tokenPackageHash: contractPackageHash,
-        tokenStatus: "DEPLOYED",
+    // Use retry logic for DB operations to handle potential connection drops during long deploy waits
+    let project;
+    let retries = 3;
+    while (retries > 0) {
+      try {
+        project = await prisma.project.create({
+          data: {
+            title: input.title,
+            description: input.description,
+            tokenSymbol: input.tokenSymbol,
+            tokenSupply: input.tokenSupply,
+            ownershipPercent: input.ownershipPercent,
+            creatorAddress: input.creatorAddress,
+            tokenContractHash: contractHash,
+            tokenPackageHash: contractPackageHash,
+            tokenStatus: contractHash ? "DEPLOYED" : "PENDING",
 
-        // New fields
-        category: input.category as Prisma.ProjectCreateInput["category"],
-        roadmap: input.roadmap,
-        fundingGoal: input.fundingGoal,
-        marketLevel: "PRE_MARKET",
+            // New fields
+            category: input.category as Prisma.ProjectCreateInput["category"],
+            roadmap: input.roadmap,
+            fundingGoal: input.fundingGoal,
+            marketLevel: "PRE_MARKET",
 
-        // Token distribution
-        creatorTokenAmount,
-        platformTokenAmount,
-        deployedBy: "PLATFORM",
+            // Token distribution
+            creatorTokenAmount,
+            platformTokenAmount,
+            deployedBy: "PLATFORM",
 
-        // Store payment deploy hashes for audit trail
-        platformFeeHash: input.platformFeeHash ?? null,
-        liquidityPoolHash: input.liquidityPoolHash ?? null,
-        tokenDeployHash: deployHash,
+            // Store payment deploy hashes for audit trail
+            platformFeeHash: input.platformFeeHash ?? null,
+            liquidityPoolHash: input.liquidityPoolHash ?? null,
+            tokenDeployHash: deployHash,
 
-        metrics: {
-          create: {
-            currentPrice: 0,
-            marketCap: 0,
-            liquidityUsd: 0,
-            totalInvestors: 0,
+            metrics: {
+              create: {
+                currentPrice: 0,
+                marketCap: 0,
+                liquidityUsd: 0,
+                totalInvestors: 0,
+              },
+            },
           },
-        },
-      },
-      include: projectWithMetrics.include,
-    });
+          include: projectWithMetrics.include,
+        });
+        break; // Success
+      } catch (error) {
+        console.warn(`[DB Retry] Project creation failed (attempts left: ${retries - 1}):`, error);
+        retries--;
+        if (retries === 0) throw error;
+        // Wait 1s before retry
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    }
+
+    if (!project) throw new Error("Failed to create project after retries");
 
     // Step 4: Transfer creator's portion of tokens (if > 0)
-    if (creatorTokenAmount > 0) {
+    // Only attempt if we have a contract hash (deployment confirmed)
+    if (creatorTokenAmount > 0 && contractHash) {
       console.log(`[Token Distribution] Transferring ${creatorTokenAmount} tokens to creator ${input.creatorAddress}`);
 
       const transferResult = await sendTokenTransfer({
@@ -253,7 +273,7 @@ export const projectService = {
 
       // Wait for confirmation (with 5-minute timeout)
       console.log(`[Token Distribution] Waiting for confirmation of deploy ${transferResult.deployHash}`);
-      const confirmed = await waitForDeploy(transferResult.deployHash, 300_000);
+      const confirmed = await waitForDeploy(transferResult.deployHash, 900_000);
 
       if (!confirmed.success) {
         console.error(`[Token Distribution] FAILED - Deploy hash: ${transferResult.deployHash}`);
@@ -326,3 +346,60 @@ export const projectService = {
 };
 
 export type ProjectSummary = ReturnType<typeof mapProject>;
+
+async function checkAndHealProject(project: {
+  id: string;
+  tokenStatus: string;
+  tokenDeployHash: string | null;
+  creatorTokenAmount: number | null;
+  creatorAddress: string;
+  tokenDistributionHash: string | null;
+}) {
+  if (project.tokenStatus !== 'PENDING' || !project.tokenDeployHash) return;
+
+  try {
+    const status = await checkDeployStatus(project.tokenDeployHash);
+
+    // If validated on-chain
+    if (status.executed && status.success) {
+      const hashes = await getContractHashesFromDeploy(project.tokenDeployHash);
+      if (hashes.contractHash) {
+        console.log(`[Self-Healing] Updating PENDING project ${project.id} to DEPLOYED`);
+
+        await prisma.project.update({
+          where: { id: project.id },
+          data: {
+            tokenStatus: 'DEPLOYED',
+            tokenContractHash: hashes.contractHash,
+            tokenPackageHash: hashes.contractPackageHash,
+          }
+        });
+
+        // Handle missing distribution
+        if (project.creatorTokenAmount && project.creatorTokenAmount > 0 && !project.tokenDistributionHash) {
+          console.log(`[Self-Healing] Distributing tokens for ${project.id}`);
+          const transferRes = await sendTokenTransfer({
+            projectId: project.id,
+            tokenContractHash: hashes.contractHash,
+            toAddress: project.creatorAddress,
+            tokenAmount: project.creatorTokenAmount
+          });
+
+          await prisma.project.update({
+            where: { id: project.id },
+            data: { tokenDistributionHash: transferRes.deployHash }
+          });
+          console.log(`[Self-Healing] Distribution sent: ${transferRes.deployHash}`);
+        }
+      }
+    } else if (status.executed && !status.success) {
+      console.log(`[Self-Healing] Project ${project.id} deploy FAILED on-chain`);
+      await prisma.project.update({
+        where: { id: project.id },
+        data: { tokenStatus: 'FAILED' }
+      });
+    }
+  } catch (error) {
+    console.warn(`[Self-Healing] Check failed for ${project.id}:`, error);
+  }
+}

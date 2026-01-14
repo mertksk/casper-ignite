@@ -214,9 +214,76 @@ export function buildTransferDeploy(params: {
     throw new Error("Failed to serialize deploy to JSON");
   }
 
+  if (!deployJson) {
+    throw new Error("Failed to serialize deploy to JSON");
+  }
+
   return {
     deploy,
     deployJson,
     deployHash: deploy.hash.toHex(),
   };
+}
+
+/**
+ * Send a signed deploy to the network via the backend proxy.
+ * This handles adding the signature to the deploy if not already present.
+ */
+export async function sendSignedDeploy(
+  deployJson: unknown,
+  signatureHex: string,
+  publicKeyHex: string
+): Promise<string> {
+  // Ensure we have a working JSON object
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let deployObj: any;
+
+  if (typeof deployJson === 'string') {
+    try {
+      deployObj = JSON.parse(deployJson);
+    } catch {
+      throw new Error("Invalid deploy JSON string");
+    }
+  } else if (typeof deployJson === 'object' && deployJson !== null) {
+    deployObj = deployJson;
+  } else {
+    throw new Error("Invalid deploy JSON");
+  }
+
+  // Ensure approvals array exists
+  if (!Array.isArray(deployObj.approvals)) {
+    deployObj.approvals = [];
+  }
+
+  // Check if approval from this signer already exists
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const hasApproval = deployObj.approvals.some(
+    (a: any) => a.signer?.toLowerCase() === publicKeyHex.toLowerCase()
+  );
+
+  if (!hasApproval) {
+    // Add the approval
+    deployObj.approvals.push({
+      signer: publicKeyHex,
+      signature: signatureHex
+    });
+  }
+
+  // Send to proxy
+  const response = await fetch("/api/proxy/deploy", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      deploy: deployObj,
+      signatureHex
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || "Failed to submit deploy");
+  }
+
+  const result = await response.json();
+  return result.deployHash;
 }

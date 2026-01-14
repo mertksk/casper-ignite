@@ -7,7 +7,7 @@ const publicEnvSchema = z.object({
   NEXT_PUBLIC_APP_NAME: z.string().min(1).default("Casper Ignite"),
   NEXT_PUBLIC_CHAIN_NAME: z.string().min(1).default("casper-test"),
   NEXT_PUBLIC_PLATFORM_FEE_ADDRESS: z.string().min(1).default("0202a0c94e3f2e9e9f8c0a0a8f8e9d8c7b6a5b4c3d2e1f0a0b1c2d3e4f5a6b7c8d9e"),
-  NEXT_PUBLIC_LIQUIDITY_POOL_ADDRESS: z.string().min(1).default("0203b1d05f4g3h2i1j0k9l8m7n6o5p4q3r2s1t0u9v8w7x6y5z4a3b2c1d0e9f8g7h"),
+  NEXT_PUBLIC_LIQUIDITY_POOL_ADDRESS: z.string().min(1).default("0202cd4a869fd31185b63fcd005c226b14b8e9674724c2469c2cfa2456c1219ecf6c"),
 });
 
 const publicParsed = publicEnvSchema.safeParse(process.env);
