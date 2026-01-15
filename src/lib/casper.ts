@@ -134,13 +134,18 @@ function loadServerSigner(): Keys.AsymmetricKey | null {
 export async function checkDeployStatus(deployHash: string) {
   const client = getRpcClient();
   try {
+    console.log(`[checkDeployStatus] Checking deploy: ${deployHash}`);
     const deployInfo = await client.getDeployInfo(deployHash);
+
+    // Log what we got from RPC
+    console.log(`[checkDeployStatus] Response keys:`, Object.keys(deployInfo || {}));
 
     // Casper 2.0 format: execution_info.execution_result.Version2
     const execInfo = (deployInfo as any).execution_info;
     if (execInfo?.execution_result?.Version2) {
       const v2Result = execInfo.execution_result.Version2;
       const errorMessage = v2Result.error_message;
+      console.log(`[checkDeployStatus] Casper 2.0 format - error_message:`, errorMessage);
       if (errorMessage === null || errorMessage === undefined) {
         return { executed: true, success: true };
       } else {
@@ -150,14 +155,20 @@ export async function checkDeployStatus(deployHash: string) {
 
     // Casper 1.x format: execution_results[0].result
     const execution = (deployInfo as any).execution_results?.[0];
-    if (!execution) return { executed: false, success: false };
+    if (!execution) {
+      console.log(`[checkDeployStatus] No execution_info or execution_results found. Deploy may still be pending.`);
+      return { executed: false, success: false, debug: "No execution data - deploy pending" };
+    }
 
     if (execution.result?.Success) {
+      console.log(`[checkDeployStatus] Casper 1.x format - Success`);
       return { executed: true, success: true };
     } else {
+      console.log(`[checkDeployStatus] Casper 1.x format - Failure:`, execution.result?.Failure);
       return { executed: true, success: false, error: JSON.stringify(execution.result?.Failure) };
     }
   } catch (e) {
+    console.error(`[checkDeployStatus] Error:`, e);
     return { executed: false, success: false, error: String(e) };
   }
 }
