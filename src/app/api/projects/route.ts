@@ -47,19 +47,25 @@ export async function POST(request: NextRequest) {
 
     try {
       // Verify platform fee payment (20 CSPR)
+      console.log("[Project API] Verifying platform fee payment:", platformFeeHash);
       const feeStatus = await checkDeployStatus(platformFeeHash);
+      console.log("[Project API] Platform fee status:", JSON.stringify(feeStatus));
+
       if (!feeStatus.executed || !feeStatus.success) {
         return NextResponse.json(
-          { error: "Platform fee payment not confirmed on blockchain. Please wait for confirmation." },
+          { error: "Platform fee payment not confirmed on blockchain. Please wait for confirmation.", details: feeStatus },
           { status: 400 }
         );
       }
 
       // Verify liquidity pool payment (180 CSPR)
+      console.log("[Project API] Verifying liquidity pool payment:", liquidityPoolHash);
       const liquidityStatus = await checkDeployStatus(liquidityPoolHash);
+      console.log("[Project API] Liquidity pool status:", JSON.stringify(liquidityStatus));
+
       if (!liquidityStatus.executed || !liquidityStatus.success) {
         return NextResponse.json(
-          { error: "Liquidity pool payment not confirmed on blockchain. Please wait for confirmation." },
+          { error: "Liquidity pool payment not confirmed on blockchain. Please wait for confirmation.", details: liquidityStatus },
           { status: 400 }
         );
       }
