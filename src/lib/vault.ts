@@ -1,7 +1,6 @@
 import "server-only";
 import {
-  HttpHandler,
-  RpcClient,
+  CasperServiceByJsonRPC,
 } from "casper-js-sdk";
 import { appConfig } from "./config";
 
@@ -14,31 +13,26 @@ const KEY_LOCKED_CSPR = "locked_cspr";
 const KEY_CSPR_PURSE = "cspr_purse";
 const KEY_ADMIN = "admin";
 const KEY_ORDER_BOOK = "order_book";
-const KEY_ORDER_OWNERS = "order_owners";
 
 // ============================================================================
 // RPC Client
 // ============================================================================
 
-let rpcClient: RpcClient | null = null;
+let rpcClient: CasperServiceByJsonRPC | null = null;
 
-function buildRpcClient(endpoint: string) {
-  return new RpcClient(new HttpHandler(endpoint, "fetch"));
-}
-
-function getRpcClient(): RpcClient {
+function getRpcClient(): CasperServiceByJsonRPC {
   if (!rpcClient) {
-    rpcClient = buildRpcClient(appConfig.rpcUrls.primary);
+    rpcClient = new CasperServiceByJsonRPC(appConfig.rpcUrls.primary);
   }
   return rpcClient;
 }
 
-function withRpcFallback<T>(fn: (client: RpcClient) => Promise<T>): Promise<T> {
+function withRpcFallback<T>(fn: (client: CasperServiceByJsonRPC) => Promise<T>): Promise<T> {
   return fn(getRpcClient()).catch(async (primaryError) => {
     if (!appConfig.rpcUrls.fallback || appConfig.rpcUrls.fallback === appConfig.rpcUrls.primary) {
       throw primaryError;
     }
-    const fallbackClient = buildRpcClient(appConfig.rpcUrls.fallback);
+    const fallbackClient = new CasperServiceByJsonRPC(appConfig.rpcUrls.fallback);
     return fn(fallbackClient);
   });
 }
@@ -88,7 +82,16 @@ export async function getLockedAmount(orderId: string): Promise<{
   const vaultAccountHash = getVaultAccountHash();
 
   try {
-    // Query the locked_cspr dictionary using direct RPC call
+    // Query the locked_cspr dictionary using direct RPC call (easier for dicts sometimes)
+    // Or use SDK v2 queryGlobalState
+    // Let's stick to the existing direct fetch pattern for dictionary items as it handles the path/key logic manually
+    // which is often more robust if SDK helpers change.
+
+    // BUT we should be consistent.
+    // SDK v2: service.stringGetDictionaryItem(stateRootHash, dictionaryKey, itemKey) ? 
+    // Actually direct fetch works fine and is detached from SDK version issues for basic queries.
+    // I will keep the fetch implementation but ensure it doesn't conflict.
+
     const rpcUrl = appConfig.rpcUrls.primary;
 
     // First get the dictionary seed URef
@@ -302,7 +305,6 @@ export async function getVaultInfo(): Promise<{
     const orderBookData = await orderBookResponse.json();
     if (!orderBookData.error && orderBookData.result?.stored_value?.CLValue?.parsed) {
       const orderBook = orderBookData.result.stored_value.CLValue.parsed;
-      // Check if it's not the zero address
       if (orderBook && orderBook !== "0000000000000000000000000000000000000000000000000000000000000000") {
         result.orderBookHash = orderBook;
       }
@@ -326,33 +328,27 @@ export async function checkVaultDeployStatus(deployHash: string): Promise<{
   success: boolean;
   error?: string;
 }> {
-  const cleanHash = deployHash.startsWith("hash-") ? deployHash.slice(5) : deployHash;
-
+  // Try to use the SDK to get deploy info
   try {
-    const result = await withRpcFallback((client) => client.getDeploy(cleanHash));
-    const execution =
-      result.executionResultsV1?.[0] ?? result.rawJSON?.execution_results?.[0];
+    const deployInfo = await withRpcFallback(client => client.getDeployInfo(deployHash));
+
+    // SDK v2 structure:
+    // deployInfo.execution_results is simpler
+    const execution = deployInfo.execution_results[0];
 
     if (!execution) {
       return { executed: false, success: false };
     }
 
-    const successResult = execution.result?.success ?? execution.result?.Success;
-    const failureResult = execution.result?.failure ?? execution.result?.Failure;
-
-    if (successResult) {
+    if (execution.result.Success) {
       return { executed: true, success: true };
+    } else {
+      return {
+        executed: true,
+        success: false,
+        error: JSON.stringify(execution.result.Failure)
+      };
     }
-
-    if (failureResult) {
-      const errorMsg =
-        failureResult.errorMessage ??
-        failureResult.error_message ??
-        JSON.stringify(failureResult);
-      return { executed: true, success: false, error: errorMsg };
-    }
-
-    return { executed: false, success: false };
   } catch (error) {
     return {
       executed: false,

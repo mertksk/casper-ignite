@@ -1,21 +1,38 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { appConfig } from "@/lib/config";
-import { Deploy, RpcClient, HttpHandler } from "casper-js-sdk";
-
-// Helper to build RPC client
-const buildRpcClient = (endpoint: string) => new RpcClient(new HttpHandler(endpoint, "fetch"));
+// Removed unused/invalid SDK v2 imports. RpcClient/HttpHandler/Deploy are not used in valid code path or valid in SDK v2 this way.
+// If needed, use CasperServiceByJsonRPC
 
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { deploy: deployJson, signatureHex } = body;
+        let { deploy: deployJson, signatureHex } = body;
+
+        // SDK v2 deployToJson returns { deploy: { ... } }
+        // If the client sent the raw result of deployToJson, we need to unwrap it.
+        if (deployJson && typeof deployJson === 'object' && 'deploy' in deployJson) {
+            console.log("[Proxy] Unwrapping SDK v2 deploy object");
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            deployJson = (deployJson as any).deploy;
+        }
 
         if (!deployJson) {
             return NextResponse.json({ error: "Missing deploy JSON" }, { status: 400 });
         }
 
         console.log(`[Proxy] Received deploy submission`);
+        if (deployJson && typeof deployJson === 'object') {
+            console.log(`[Proxy] Deploy keys: ${Object.keys(deployJson).join(', ')}`);
+            if ('header' in deployJson) {
+                console.log(`[Proxy] Header keys: ${Object.keys(deployJson.header).join(', ')}`);
+                console.log(`[Proxy] Header content:`, JSON.stringify(deployJson.header, null, 2));
+            } else {
+                console.log(`[Proxy] Header MISSING in deployJson`);
+            }
+        } else {
+            console.log(`[Proxy] deployJson is not an object:`, typeof deployJson);
+        }
 
         // Ensure approvals array exists and add approval
         const deployWithApproval = { ...deployJson };
@@ -41,9 +58,15 @@ export async function POST(request: NextRequest) {
 
         // Add approval if not present
         const signerKey = deployWithApproval.header?.account;
+
+        if (!signerKey) {
+            return NextResponse.json({ error: "Deploy header missing account/signer" }, { status: 400 });
+        }
+
         const hasApproval = deployWithApproval.approvals.some(
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (a: any) => {
+                if (!a.signer || !a.signature) return false;
                 const fixedSig = fixSignaturePrefix(a.signature, a.signer);
                 return fixedSig === fixSignaturePrefix(signatureHex, signerKey);
             }

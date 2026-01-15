@@ -6,15 +6,10 @@
 "use client";
 
 import {
-  Args,
-  CLValue,
-  Deploy,
-  DeployHeader,
-  Duration,
-  ExecutableDeployItem,
-  ModuleBytes,
-  PublicKey,
-  Timestamp,
+  CLPublicKey,
+  CLValueBuilder,
+  DeployUtil,
+  RuntimeArgs,
 } from "casper-js-sdk";
 import { getCasperWalletProvider } from "./casperWallet";
 
@@ -74,9 +69,9 @@ export interface TradeResult {
 // Constants
 // ============================================================================
 
-const DEFAULT_TTL_MS = 30 * 60 * 1000;
+const DEFAULT_TTL_MS = 1800000; // 30 min
 const DEFAULT_GAS_PRICE = 1;
-const BUY_SESSION_PAYMENT = "5000000000"; // 5 CSPR for gas
+const BUY_SESSION_PAYMENT = 5000000000; // 5 CSPR
 
 // Get chain name from env or default
 const getChainName = () => {
@@ -172,40 +167,30 @@ export async function buyTokens(params: {
 
   // Build the buy deploy
   const wasmBytes = await fetchAmmBuyWasm();
-  const accountKey = PublicKey.fromHex(senderPublicKey);
+  const accountKey = CLPublicKey.fromHex(senderPublicKey);
 
   // Convert contract hash to bytes
   const cleanHash = status.contractHash.replace("hash-", "");
-  const contractHashBytes = new Uint8Array(
-    (cleanHash.match(/.{2}/g) || []).map((byte) => parseInt(byte, 16))
-  );
+  const contractHashBytes = Uint8Array.from(Buffer.from(cleanHash, "hex"));
 
-  const runtimeArgs = Args.fromMap({
-    amm_contract_hash: CLValue.newCLByteArray(contractHashBytes),
-    token_amount: CLValue.newCLUInt512(tokenAmount),
-    max_cost: CLValue.newCLUInt512(maxCostMotes),
+  const runtimeArgs = RuntimeArgs.fromMap({
+    amm_contract_hash: CLValueBuilder.byteArray(contractHashBytes),
+    token_amount: CLValueBuilder.u512(tokenAmount),
+    max_cost: CLValueBuilder.u512(maxCostMotes),
   });
 
-  const session = new ExecutableDeployItem();
-  session.moduleBytes = new ModuleBytes(wasmBytes, runtimeArgs);
-
-  const payment = ExecutableDeployItem.standardPayment(BUY_SESSION_PAYMENT);
-
-  const header = new DeployHeader(
-    getChainName(),
-    [],
-    DEFAULT_GAS_PRICE,
-    new Timestamp(new Date(Date.now() - 20000)),
-    new Duration(DEFAULT_TTL_MS),
-    accountKey
+  const deploy = DeployUtil.makeDeploy(
+    new DeployUtil.DeployParams(
+      accountKey,
+      getChainName(),
+      DEFAULT_GAS_PRICE,
+      DEFAULT_TTL_MS
+    ),
+    DeployUtil.ExecutableDeployItem.newModuleBytes(wasmBytes, runtimeArgs),
+    DeployUtil.standardPayment(BUY_SESSION_PAYMENT)
   );
 
-  const deploy = Deploy.makeDeploy(header, payment, session);
-  const deployJson = Deploy.toJSON(deploy);
-
-  if (!deployJson) {
-    throw new Error("Failed to serialize buy deploy");
-  }
+  const deployJson = DeployUtil.deployToJson(deploy);
 
   // Get Casper Wallet provider
   const wallet = getCasperWalletProvider();
@@ -252,7 +237,8 @@ export async function buyTokens(params: {
 
   return {
     success: true,
-    deployHash: submitResult.deployHash || deploy.hash.toHex(),
+    // Prefer server returned hash as potential signature malleability fixes might happen there
+    deployHash: submitResult.deployHash || Buffer.from(deploy.hash).toString('hex'),
     tokenAmount,
     amountMotes: maxCostMotes,
     amountCSPR: maxCostCSPR,
@@ -282,6 +268,7 @@ export async function sellTokens(params: {
 
   // For sell, we call the contract entry point directly
   // This requires a session that just calls the sell entry point
+  // The server API prepares the deploy JSON for sell
   const response = await fetch("/api/amm/trade/sell", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

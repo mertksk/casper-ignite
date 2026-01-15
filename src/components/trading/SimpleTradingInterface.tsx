@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useCasperWallet } from "@/hooks/useCasperWallet";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { TrendingUp, TrendingDown, Loader2 } from "lucide-react";
+import { TrendingUp, TrendingDown, Loader2, Wallet } from "lucide-react";
 
 interface SimpleTradingInterfaceProps {
   projectId: string;
@@ -39,6 +39,32 @@ export function SimpleTradingInterface({
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [currentPrice, setCurrentPrice] = useState(initialPrice);
   const [deployHash, setDeployHash] = useState<string | null>(null);
+  const [tokenBalance, setTokenBalance] = useState<string>("0");
+  const [balanceLoading, setBalanceLoading] = useState(false);
+
+  // Fetch user's token balance
+  const fetchBalance = useCallback(async () => {
+    if (!publicKey) return;
+    setBalanceLoading(true);
+    try {
+      const response = await fetch(`/api/projects/${projectId}/balance?wallet=${publicKey}`);
+      if (response.ok) {
+        const data = await response.json();
+        setTokenBalance(data.formatted || "0");
+      }
+    } catch (error) {
+      console.error("Error fetching balance:", error);
+    } finally {
+      setBalanceLoading(false);
+    }
+  }, [publicKey, projectId]);
+
+  // Fetch balance when wallet connects or after trade
+  useEffect(() => {
+    if (isConnected && publicKey) {
+      fetchBalance();
+    }
+  }, [isConnected, publicKey, fetchBalance]);
 
   // Fetch current price every 5 seconds
   useEffect(() => {
@@ -160,12 +186,13 @@ export function SimpleTradingInterface({
       setAmount("");
       setQuote(null);
 
-      // Refresh price
+      // Refresh price and balance
       const priceResponse = await fetch(`/api/projects/${projectId}/bonding-curve`);
       if (priceResponse.ok) {
         const priceData = await priceResponse.json();
         setCurrentPrice(priceData.currentPrice);
       }
+      fetchBalance(); // Refresh user's token balance
     } catch (error) {
       console.error("Transaction error:", error);
       setMessage({
@@ -187,12 +214,28 @@ export function SimpleTradingInterface({
           <div className="flex items-center justify-between">
             <h3 className="text-xl font-bold text-brand-900">Trade {tokenSymbol}</h3>
             <div className="text-right">
-              <p className="text-xs text-brand-500">Current Price</p>
+              <p className="text-xs text-brand-500">Price</p>
               <p className="text-lg font-bold text-brand-900">
-                ${currentPrice.toFixed(6)}
+                {currentPrice.toFixed(6)} CSPR
               </p>
             </div>
           </div>
+          {/* User Balance Display */}
+          {isConnected && (
+            <div className="mt-3 flex items-center justify-between rounded-xl bg-brand-50 px-4 py-2">
+              <div className="flex items-center gap-2">
+                <Wallet className="h-4 w-4 text-brand-500" />
+                <span className="text-sm text-brand-600">Your Balance</span>
+              </div>
+              <span className="font-semibold text-brand-800">
+                {balanceLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  `${tokenBalance} ${tokenSymbol}`
+                )}
+              </span>
+            </div>
+          )}
         </CardHeader>
 
         <CardContent className="space-y-4">
@@ -200,22 +243,20 @@ export function SimpleTradingInterface({
           <div className="grid grid-cols-2 gap-2 rounded-full bg-brand-50 p-1">
             <button
               onClick={() => setMode("BUY")}
-              className={`rounded-full py-2 font-semibold transition-all ${
-                mode === "BUY"
-                  ? "bg-green-500 text-white shadow-cartoon-sm"
-                  : "text-brand-600 hover:bg-white"
-              }`}
+              className={`rounded-full py-2 font-semibold transition-all ${mode === "BUY"
+                ? "bg-green-500 text-white shadow-cartoon-sm"
+                : "text-brand-600 hover:bg-white"
+                }`}
             >
               <TrendingUp className="inline h-4 w-4 mr-1" />
               Buy
             </button>
             <button
               onClick={() => setMode("SELL")}
-              className={`rounded-full py-2 font-semibold transition-all ${
-                mode === "SELL"
-                  ? "bg-red-500 text-white shadow-cartoon-sm"
-                  : "text-brand-600 hover:bg-white"
-              }`}
+              className={`rounded-full py-2 font-semibold transition-all ${mode === "SELL"
+                ? "bg-red-500 text-white shadow-cartoon-sm"
+                : "text-brand-600 hover:bg-white"
+                }`}
             >
               <TrendingDown className="inline h-4 w-4 mr-1" />
               Sell
@@ -264,11 +305,10 @@ export function SimpleTradingInterface({
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-brand-600">Price impact</span>
                   <span
-                    className={`font-semibold ${
-                      quote.priceImpact > 5
-                        ? "text-orange-600"
-                        : "text-green-600"
-                    }`}
+                    className={`font-semibold ${quote.priceImpact > 5
+                      ? "text-orange-600"
+                      : "text-green-600"
+                      }`}
                   >
                     {quote.priceImpact.toFixed(2)}%
                   </span>
@@ -286,11 +326,10 @@ export function SimpleTradingInterface({
             <Button
               type="submit"
               disabled={!quote || submitting || loading}
-              className={`w-full rounded-full py-6 text-lg font-bold shadow-cartoon-pop transition-all disabled:opacity-50 ${
-                mode === "BUY"
-                  ? "bg-green-500 hover:bg-green-600 text-white"
-                  : "bg-red-500 hover:bg-red-600 text-white"
-              }`}
+              className={`w-full rounded-full py-6 text-lg font-bold shadow-cartoon-pop transition-all disabled:opacity-50 ${mode === "BUY"
+                ? "bg-green-500 hover:bg-green-600 text-white"
+                : "bg-red-500 hover:bg-red-600 text-white"
+                }`}
             >
               {submitting ? (
                 <>
@@ -308,11 +347,10 @@ export function SimpleTradingInterface({
           {/* Message */}
           {message && (
             <div
-              className={`rounded-2xl p-3 text-sm font-semibold ${
-                message.type === "success"
-                  ? "bg-green-100 text-green-800"
-                  : "bg-red-100 text-red-800"
-              }`}
+              className={`rounded-2xl p-3 text-sm font-semibold ${message.type === "success"
+                ? "bg-green-100 text-green-800"
+                : "bg-red-100 text-red-800"
+                }`}
             >
               <p>{message.text}</p>
               {deployHash && message.type === "success" && (

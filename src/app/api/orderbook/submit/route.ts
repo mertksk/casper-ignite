@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Deploy, PublicKey } from "casper-js-sdk";
+import { DeployUtil, CLPublicKey } from "casper-js-sdk";
 
 const NODE_URL = process.env.CSPR_RPC_URL_PRIMARY || "https://node.testnet.casper.network/rpc";
 
@@ -16,8 +16,16 @@ export async function POST(request: NextRequest) {
     }
 
     // Reconstruct the deploy with signature
-    const deploy = Deploy.fromJSON(deployJson);
-    const publicKey = PublicKey.fromHex(signerPublicKey);
+    const deployResult = DeployUtil.deployFromJson(deployJson);
+    if (deployResult.err) {
+      return NextResponse.json(
+        { error: "Invalid deploy JSON: " + deployResult.val.message },
+        { status: 400 }
+      );
+    }
+    const deploy = deployResult.val;
+
+    const publicKey = CLPublicKey.fromHex(signerPublicKey);
 
     // Parse raw signature bytes from wallet
     const rawSignatureBytes = new Uint8Array(
@@ -27,17 +35,18 @@ export async function POST(request: NextRequest) {
     // Determine algorithm tag from public key (01 = Ed25519, 02 = Secp256k1)
     const algorithmTag = parseInt(signerPublicKey.slice(0, 2), 16);
 
-    // Prepend algorithm tag if not already present
+    // Prepend algorithm tag if not already present; check length heuristic
     let signatureBytes: Uint8Array;
-    if (rawSignatureBytes[0] === 1 || rawSignatureBytes[0] === 2) {
-      signatureBytes = rawSignatureBytes;
-    } else {
+    if (rawSignatureBytes.length === 64) {
+      const algoTag = publicKey.isEd25519() ? 1 : 2;
       signatureBytes = new Uint8Array(rawSignatureBytes.length + 1);
-      signatureBytes[0] = algorithmTag;
+      signatureBytes[0] = algoTag;
       signatureBytes.set(rawSignatureBytes, 1);
+    } else {
+      signatureBytes = rawSignatureBytes;
     }
 
-    const signedDeploy = Deploy.setSignature(deploy, signatureBytes, publicKey);
+    const signedDeploy = DeployUtil.setSignature(deploy, signatureBytes, publicKey);
 
     // Submit to network
     const response = await fetch(NODE_URL, {
@@ -48,7 +57,7 @@ export async function POST(request: NextRequest) {
         id: 1,
         method: "account_put_deploy",
         params: {
-          deploy: Deploy.toJSON(signedDeploy),
+          deploy: DeployUtil.deployToJson(signedDeploy),
         },
       }),
     });
@@ -62,11 +71,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const deployHash = result.result?.deploy_hash || Buffer.from(signedDeploy.hash).toString("hex");
+
     return NextResponse.json({
       success: true,
-      deployHash: signedDeploy.hash.toHex(),
+      deployHash: deployHash,
       action,
-      explorerUrl: `https://testnet.cspr.live/deploy/${signedDeploy.hash.toHex()}`,
+      explorerUrl: `https://testnet.cspr.live/deploy/${deployHash}`,
     });
   } catch (error) {
     console.error("Error submitting orderbook deploy:", error);

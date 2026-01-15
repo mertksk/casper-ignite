@@ -6,17 +6,10 @@
 "use client";
 
 import {
-  Args,
-  CLValue,
-  ContractHash,
-  Deploy,
-  DeployHeader,
-  Duration,
-  ExecutableDeployItem,
-  Hash,
-  PublicKey,
-  Timestamp,
-  StoredContractByHash,
+  CLPublicKey,
+  CLValueBuilder,
+  DeployUtil,
+  RuntimeArgs,
 } from "casper-js-sdk";
 import { getCasperWalletProvider } from "./casperWallet";
 
@@ -80,11 +73,11 @@ export interface ClaimResult {
 // Constants
 // ============================================================================
 
-const DEFAULT_TTL_MS = 30 * 60 * 1000;
+const DEFAULT_TTL_MS = 1800000;
 const DEFAULT_GAS_PRICE = 1;
-const CREATE_PROJECT_GAS = "10000000000"; // 10 CSPR
-const LAUNCH_TOKEN_GAS = "15000000000"; // 15 CSPR
-const CLAIM_VESTED_GAS = "5000000000"; // 5 CSPR
+const CREATE_PROJECT_GAS = 10000000000; // 10 CSPR
+const LAUNCH_TOKEN_GAS = 15000000000; // 15 CSPR
+const CLAIM_VESTED_GAS = 5000000000; // 5 CSPR
 
 const getChainName = () => {
   if (typeof window !== "undefined") {
@@ -162,44 +155,34 @@ export async function createProject(params: {
   }
 
   const cleanHash = status.contractHash.replace("hash-", "");
-  const contractHashBytes = new Uint8Array(
-    (cleanHash.match(/.{2}/g) || []).map((byte) => parseInt(byte, 16))
-  );
-  const contractHash = new ContractHash(new Hash(contractHashBytes), "contract-");
+  const contractHashBytes = Uint8Array.from(Buffer.from(cleanHash, "hex"));
 
-  const accountKey = PublicKey.fromHex(senderPublicKey);
+  const accountKey = CLPublicKey.fromHex(senderPublicKey);
 
-  const runtimeArgs = Args.fromMap({
-    name: CLValue.newCLString(name),
-    symbol: CLValue.newCLString(symbol),
+  const runtimeArgs = RuntimeArgs.fromMap({
+    name: CLValueBuilder.string(name),
+    symbol: CLValueBuilder.string(symbol),
   });
-
-  const session = new ExecutableDeployItem();
-  session.storedContractByHash = new StoredContractByHash(
-    contractHash,
-    "create_project",
-    runtimeArgs
-  );
 
   // Payment includes platform fee
   const totalPayment = BigInt(CREATE_PROJECT_GAS) + BigInt(Math.round(platformFeeCSPR * 1_000_000_000));
-  const payment = ExecutableDeployItem.standardPayment(totalPayment.toString());
 
-  const header = new DeployHeader(
-    getChainName(),
-    [],
-    DEFAULT_GAS_PRICE,
-    new Timestamp(new Date(Date.now() - 20000)),
-    new Duration(DEFAULT_TTL_MS),
-    accountKey
+  const deploy = DeployUtil.makeDeploy(
+    new DeployUtil.DeployParams(
+      accountKey,
+      getChainName(),
+      DEFAULT_GAS_PRICE,
+      DEFAULT_TTL_MS
+    ),
+    DeployUtil.ExecutableDeployItem.newStoredContractByHash(
+      contractHashBytes,
+      "create_project",
+      runtimeArgs
+    ),
+    DeployUtil.standardPayment(totalPayment.toString())
   );
 
-  const deploy = Deploy.makeDeploy(header, payment, session);
-  const deployJson = Deploy.toJSON(deploy);
-
-  if (!deployJson) {
-    throw new Error("Failed to serialize deploy");
-  }
+  const deployJson = DeployUtil.deployToJson(deploy);
 
   // Get Casper Wallet provider
   const wallet = getCasperWalletProvider();
@@ -242,7 +225,7 @@ export async function createProject(params: {
 
   return {
     success: true,
-    deployHash: submitResult.deployHash || deploy.hash.toHex(),
+    deployHash: submitResult.deployHash || Buffer.from(deploy.hash).toString("hex"),
     message: "Project creation submitted successfully",
   };
 }
@@ -264,48 +247,35 @@ export async function launchToken(params: {
   }
 
   const cleanHash = status.contractHash.replace("hash-", "");
-  const contractHashBytes = new Uint8Array(
-    (cleanHash.match(/.{2}/g) || []).map((byte) => parseInt(byte, 16))
-  );
-  const contractHash = new ContractHash(new Hash(contractHashBytes), "contract-");
+  const contractHashBytes = Uint8Array.from(Buffer.from(cleanHash, "hex"));
 
   const cleanTokenHash = tokenContractHash.replace("hash-", "");
-  const tokenHashBytes = new Uint8Array(
-    (cleanTokenHash.match(/.{2}/g) || []).map((byte) => parseInt(byte, 16))
-  );
+  const tokenHashBytes = Uint8Array.from(Buffer.from(cleanTokenHash, "hex"));
 
-  const accountKey = PublicKey.fromHex(senderPublicKey);
+  const accountKey = CLPublicKey.fromHex(senderPublicKey);
 
-  const runtimeArgs = Args.fromMap({
-    project_id: CLValue.newCLString(projectId),
-    token_contract: CLValue.newCLByteArray(tokenHashBytes),
-    founder_amount: CLValue.newCLUInt512(founderAmount),
+  const runtimeArgs = RuntimeArgs.fromMap({
+    project_id: CLValueBuilder.string(projectId),
+    token_contract: CLValueBuilder.byteArray(tokenHashBytes),
+    founder_amount: CLValueBuilder.u512(founderAmount),
   });
 
-  const session = new ExecutableDeployItem();
-  session.storedContractByHash = new StoredContractByHash(
-    contractHash,
-    "launch_token",
-    runtimeArgs
+  const deploy = DeployUtil.makeDeploy(
+    new DeployUtil.DeployParams(
+      accountKey,
+      getChainName(),
+      DEFAULT_GAS_PRICE,
+      DEFAULT_TTL_MS
+    ),
+    DeployUtil.ExecutableDeployItem.newStoredContractByHash(
+      contractHashBytes,
+      "launch_token",
+      runtimeArgs
+    ),
+    DeployUtil.standardPayment(LAUNCH_TOKEN_GAS.toString())
   );
 
-  const payment = ExecutableDeployItem.standardPayment(LAUNCH_TOKEN_GAS);
-
-  const header = new DeployHeader(
-    getChainName(),
-    [],
-    DEFAULT_GAS_PRICE,
-    new Timestamp(new Date(Date.now() - 20000)),
-    new Duration(DEFAULT_TTL_MS),
-    accountKey
-  );
-
-  const deploy = Deploy.makeDeploy(header, payment, session);
-  const deployJson = Deploy.toJSON(deploy);
-
-  if (!deployJson) {
-    throw new Error("Failed to serialize deploy");
-  }
+  const deployJson = DeployUtil.deployToJson(deploy);
 
   const wallet = getCasperWalletProvider();
   if (!wallet) {
@@ -345,7 +315,7 @@ export async function launchToken(params: {
 
   return {
     success: true,
-    deployHash: submitResult.deployHash || deploy.hash.toHex(),
+    deployHash: submitResult.deployHash || Buffer.from(deploy.hash).toString("hex"),
     message: "Token launch submitted successfully",
   };
 }
@@ -365,41 +335,30 @@ export async function claimVestedTokens(params: {
   }
 
   const cleanHash = status.contractHash.replace("hash-", "");
-  const contractHashBytes = new Uint8Array(
-    (cleanHash.match(/.{2}/g) || []).map((byte) => parseInt(byte, 16))
-  );
-  const contractHash = new ContractHash(new Hash(contractHashBytes), "contract-");
+  const contractHashBytes = Uint8Array.from(Buffer.from(cleanHash, "hex"));
 
-  const accountKey = PublicKey.fromHex(senderPublicKey);
+  const accountKey = CLPublicKey.fromHex(senderPublicKey);
 
-  const runtimeArgs = Args.fromMap({
-    project_id: CLValue.newCLString(projectId),
+  const runtimeArgs = RuntimeArgs.fromMap({
+    project_id: CLValueBuilder.string(projectId),
   });
 
-  const session = new ExecutableDeployItem();
-  session.storedContractByHash = new StoredContractByHash(
-    contractHash,
-    "claim_vested",
-    runtimeArgs
+  const deploy = DeployUtil.makeDeploy(
+    new DeployUtil.DeployParams(
+      accountKey,
+      getChainName(),
+      DEFAULT_GAS_PRICE,
+      DEFAULT_TTL_MS
+    ),
+    DeployUtil.ExecutableDeployItem.newStoredContractByHash(
+      contractHashBytes,
+      "claim_vested",
+      runtimeArgs
+    ),
+    DeployUtil.standardPayment(CLAIM_VESTED_GAS.toString())
   );
 
-  const payment = ExecutableDeployItem.standardPayment(CLAIM_VESTED_GAS);
-
-  const header = new DeployHeader(
-    getChainName(),
-    [],
-    DEFAULT_GAS_PRICE,
-    new Timestamp(new Date(Date.now() - 20000)),
-    new Duration(DEFAULT_TTL_MS),
-    accountKey
-  );
-
-  const deploy = Deploy.makeDeploy(header, payment, session);
-  const deployJson = Deploy.toJSON(deploy);
-
-  if (!deployJson) {
-    throw new Error("Failed to serialize deploy");
-  }
+  const deployJson = DeployUtil.deployToJson(deploy);
 
   const wallet = getCasperWalletProvider();
   if (!wallet) {
@@ -439,7 +398,7 @@ export async function claimVestedTokens(params: {
 
   return {
     success: true,
-    deployHash: submitResult.deployHash || deploy.hash.toHex(),
+    deployHash: submitResult.deployHash || Buffer.from(deploy.hash).toString("hex"),
     message: "Vesting claim submitted successfully",
   };
 }

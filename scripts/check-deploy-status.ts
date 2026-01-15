@@ -1,36 +1,37 @@
-#!/usr/bin/env tsx
-/**
- * Check the status of a specific deploy
- */
+const { CasperServiceByJsonRPC } = require("casper-js-sdk");
+const dotenv = require('dotenv');
+dotenv.config();
 
-import { checkDeployStatus } from "../src/lib/casper";
-import { config } from "dotenv";
+const RPC_URL = process.env.CSPR_RPC_URL_PRIMARY || "http://136.243.187.84:7777/rpc";
+const DEPLOY_HASH = "7d550871f70454138933b6a0eac86070aa51a8dea390b534712121e26bb85b15";
 
-config();
+async function check() {
+  console.log(`Checking deploy ${DEPLOY_HASH} on ${RPC_URL}`);
 
-const deployHash = process.argv[2];
+  // SDK v2 export check
+  const Service = CasperServiceByJsonRPC || CasperServiceByJsonRPC.CasperServiceByJsonRPC;
+  const client = new Service(RPC_URL);
 
-if (!deployHash) {
-  console.error("Usage: npx tsx scripts/check-deploy-status.ts <deploy-hash>");
-  process.exit(1);
-}
+  try {
+    const deployInfo = await client.getDeployInfo(DEPLOY_HASH);
+    console.log("Deploy Info:", JSON.stringify(deployInfo, null, 2));
 
-async function main() {
-  console.log(`🔍 Checking deploy status: ${deployHash}\n`);
-
-  const status = await checkDeployStatus(deployHash);
-
-  console.log("Status:", JSON.stringify(status, null, 2));
-
-  if (status.executed) {
-    if (status.success) {
-      console.log("\n✅ Deploy executed successfully!");
+    // Check execution results
+    if (deployInfo.execution_results.length > 0) {
+      const result = deployInfo.execution_results[0].result;
+      if (result.Success) {
+        console.log("SUCCESS! Deploy executed successfully.");
+      } else {
+        console.log("FAILURE! Deploy failed execution.");
+        console.log(JSON.stringify(result.Failure, null, 2));
+      }
     } else {
-      console.log("\n❌ Deploy failed:", status.error);
+      console.log("PENDING (or not found in execution results yet)");
     }
-  } else {
-    console.log("\n⏳ Deploy not yet executed (still pending)");
+
+  } catch (e) {
+    console.error("Error fetching deploy info:", e);
   }
 }
 
-main().catch(console.error);
+check();

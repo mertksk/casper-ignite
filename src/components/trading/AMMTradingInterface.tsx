@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { TrendingUp, TrendingDown, Loader2, Wallet, ExternalLink } from "lucide-react";
-import { PublicKey } from "casper-js-sdk";
+import { CLPublicKey } from "casper-js-sdk";
 import {
   getAmmStatus,
   getBuyQuote,
@@ -41,10 +41,10 @@ export function AMMTradingInterface({
   const accountHash = useMemo(() => {
     if (!publicKey) return null;
     try {
-      const pk = PublicKey.fromHex(publicKey);
-      // accountHash returns AccountHash, we need the hex string
-      const hash = pk.accountHash();
-      return `account-hash-${hash.toHex()}`;
+      const pk = CLPublicKey.fromHex(publicKey);
+      // accountHash returns AccountHash (Uint8Array) in SDK v2
+      const hash = pk.toAccountHash();
+      return `account-hash-${Buffer.from(hash).toString("hex")}`;
     } catch {
       return null;
     }
@@ -308,22 +308,20 @@ export function AMMTradingInterface({
           <div className="grid grid-cols-2 gap-2 rounded-full bg-brand-50 p-1">
             <button
               onClick={() => setMode("BUY")}
-              className={`rounded-full py-2 font-semibold transition-all ${
-                mode === "BUY"
+              className={`rounded-full py-2 font-semibold transition-all ${mode === "BUY"
                   ? "bg-green-500 text-white shadow-cartoon-sm"
                   : "text-brand-600 hover:bg-white"
-              }`}
+                }`}
             >
               <TrendingUp className="mr-1 inline h-4 w-4" />
               Buy
             </button>
             <button
               onClick={() => setMode("SELL")}
-              className={`rounded-full py-2 font-semibold transition-all ${
-                mode === "SELL"
+              className={`rounded-full py-2 font-semibold transition-all ${mode === "SELL"
                   ? "bg-red-500 text-white shadow-cartoon-sm"
                   : "text-brand-600 hover:bg-white"
-              }`}
+                }`}
             >
               <TrendingDown className="mr-1 inline h-4 w-4" />
               Sell
@@ -366,11 +364,10 @@ export function AMMTradingInterface({
                   key={pct}
                   type="button"
                   onClick={() => setSlippage(pct)}
-                  className={`rounded-lg px-2 py-1 text-xs ${
-                    slippage === pct
+                  className={`rounded-lg px-2 py-1 text-xs ${slippage === pct
                       ? "bg-brand-200 text-brand-800"
                       : "bg-brand-50 text-brand-600 hover:bg-brand-100"
-                  }`}
+                    }`}
                 >
                   {pct}%
                 </button>
@@ -404,11 +401,10 @@ export function AMMTradingInterface({
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-brand-600">Price impact</span>
                   <span
-                    className={`font-semibold ${
-                      Math.abs(quote.priceImpact) > 5
+                    className={`font-semibold ${Math.abs(quote.priceImpact) > 5
                         ? "text-orange-600"
                         : "text-green-600"
-                    }`}
+                      }`}
                   >
                     {quote.priceImpact.toFixed(2)}%
                   </span>
@@ -436,11 +432,10 @@ export function AMMTradingInterface({
             <Button
               type="submit"
               disabled={!quote || submitting || quoteLoading}
-              className={`w-full rounded-full py-6 text-lg font-bold shadow-cartoon-pop transition-all disabled:opacity-50 ${
-                mode === "BUY"
+              className={`w-full rounded-full py-6 text-lg font-bold shadow-cartoon-pop transition-all disabled:opacity-50 ${mode === "BUY"
                   ? "bg-green-500 text-white hover:bg-green-600"
                   : "bg-red-500 text-white hover:bg-red-600"
-              }`}
+                }`}
             >
               {submitting ? (
                 <>
@@ -458,13 +453,12 @@ export function AMMTradingInterface({
           {/* Message */}
           {message && (
             <div
-              className={`rounded-2xl p-3 text-sm font-semibold ${
-                message.type === "success"
+              className={`rounded-2xl p-3 text-sm font-semibold ${message.type === "success"
                   ? "bg-green-100 text-green-800"
                   : message.type === "error"
-                  ? "bg-red-100 text-red-800"
-                  : "bg-blue-100 text-blue-800"
-              }`}
+                    ? "bg-red-100 text-red-800"
+                    : "bg-blue-100 text-blue-800"
+                }`}
             >
               <p>{message.text}</p>
               {deployHash && message.type === "success" && (

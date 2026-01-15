@@ -27,6 +27,7 @@ const mapProject = (project: ProjectInclude) => ({
   tokenContractHash: project.tokenContractHash,
   tokenPackageHash: project.tokenPackageHash,
   tokenStatus: project.tokenStatus,
+  tokenDeployHash: project.tokenDeployHash, // Added for tracking pending deploys
   createdAt: project.createdAt.toISOString(),
 
   // New fields

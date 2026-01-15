@@ -1,16 +1,11 @@
 "use client";
 
 import {
-  Args,
-  CLValue,
-  Deploy,
-  DeployHeader,
-  Duration,
-  ExecutableDeployItem,
-  ModuleBytes,
-  PublicKey,
-  Timestamp,
-  makeCsprTransferDeploy,
+  DeployUtil,
+  CLValueBuilder,
+  RuntimeArgs,
+  CLPublicKey,
+  CLByteArray
 } from "casper-js-sdk";
 import { publicRuntime } from "./client-config";
 
@@ -24,7 +19,8 @@ type TokenDeployInput = {
 
 const DEFAULT_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const DEFAULT_GAS_PRICE = 1;
-const TOKEN_DEPLOY_PAYMENT = "250000000000"; // 250 CSPR
+// 250 CSPR in motes
+const TOKEN_DEPLOY_PAYMENT = 250_000_000_000;
 
 /**
  * Fetch CEP-18 WASM from public directory
@@ -43,17 +39,19 @@ async function fetchCep18Wasm(): Promise<Uint8Array> {
 /**
  * Build CEP-18 runtime arguments
  */
-function buildCep18RuntimeArgs(input: TokenDeployInput): Args {
+function buildCep18RuntimeArgs(input: TokenDeployInput): RuntimeArgs {
   const decimals = input.decimals ?? 9;
   const totalSupplyWithDecimals = (
-    BigInt(input.totalSupply) * BigInt(10) ** BigInt(decimals)
+    BigInt(input.totalSupply) * BigInt(Math.pow(10, decimals))
   ).toString();
 
-  return Args.fromMap({
-    name: CLValue.newCLString(input.projectName),
-    symbol: CLValue.newCLString(input.symbol),
-    decimals: CLValue.newCLUint8(decimals),
-    total_supply: CLValue.newCLUInt256(totalSupplyWithDecimals),
+  return RuntimeArgs.fromMap({
+    name: CLValueBuilder.string(input.projectName),
+    symbol: CLValueBuilder.string(input.symbol),
+    decimals: CLValueBuilder.u8(decimals),
+    total_supply: CLValueBuilder.u256(totalSupplyWithDecimals),
+    events_mode: CLValueBuilder.u8(1),
+    enable_mint_burn: CLValueBuilder.u8(0)
   });
 }
 
@@ -63,25 +61,21 @@ function buildCep18RuntimeArgs(input: TokenDeployInput): Args {
  */
 export async function buildClientTokenDeploy(input: TokenDeployInput) {
   const wasmBytes = await fetchCep18Wasm();
-  const accountKey = PublicKey.fromHex(input.creatorPublicKey);
+  const accountKey = CLPublicKey.fromHex(input.creatorPublicKey);
   const runtimeArgs = buildCep18RuntimeArgs(input);
 
-  const session = new ExecutableDeployItem();
-  session.moduleBytes = new ModuleBytes(wasmBytes, runtimeArgs);
-
-  const payment = ExecutableDeployItem.standardPayment(TOKEN_DEPLOY_PAYMENT);
-
-  const header = new DeployHeader(
-    publicRuntime.chainName,
-    [],
-    DEFAULT_GAS_PRICE,
-    new Timestamp(new Date(Date.now() - 20000)), // 20s buffer for clock skew
-    new Duration(DEFAULT_TTL_MS),
-    accountKey
+  const deploy = DeployUtil.makeDeploy(
+    new DeployUtil.DeployParams(
+      accountKey,
+      publicRuntime.chainName,
+      DEFAULT_GAS_PRICE,
+      DEFAULT_TTL_MS
+    ),
+    DeployUtil.ExecutableDeployItem.newModuleBytes(wasmBytes, runtimeArgs),
+    DeployUtil.standardPayment(TOKEN_DEPLOY_PAYMENT)
   );
 
-  const deploy = Deploy.makeDeploy(header, payment, session);
-  const deployJson = Deploy.toJSON(deploy);
+  const deployJson = DeployUtil.deployToJson(deploy);
 
   if (!deployJson) {
     throw new Error("Failed to serialize deploy to JSON");
@@ -90,7 +84,7 @@ export async function buildClientTokenDeploy(input: TokenDeployInput) {
   return {
     deploy,
     deployJson,
-    deployHash: deploy.hash.toHex(),
+    deployHash: Buffer.from(deploy.hash).toString("hex"),
     creatorKey: accountKey,
     runtimeArgs,
     name: input.projectName,
@@ -136,7 +130,7 @@ export async function buildLockCsprDeploy(params: {
   } = params;
 
   const wasmBytes = await fetchLockCsprWasm();
-  const accountKey = PublicKey.fromHex(senderPublicKey);
+  const accountKey = CLPublicKey.fromHex(senderPublicKey);
 
   // Build runtime args for the session contract
   // The vault contract hash needs to be passed as a ContractHash (32 bytes)
@@ -145,28 +139,24 @@ export async function buildLockCsprDeploy(params: {
     (cleanHash.match(/.{2}/g) || []).map((byte) => parseInt(byte, 16))
   );
 
-  const runtimeArgs = Args.fromMap({
-    vault_contract_hash: CLValue.newCLByteArray(contractHashBytes),
-    order_id: CLValue.newCLString(orderId),
-    amount: CLValue.newCLUInt512(amountMotes),
+  const runtimeArgs = RuntimeArgs.fromMap({
+    vault_contract_hash: new CLByteArray(contractHashBytes),
+    order_id: CLValueBuilder.string(orderId),
+    amount: CLValueBuilder.u512(amountMotes),
   });
 
-  const session = new ExecutableDeployItem();
-  session.moduleBytes = new ModuleBytes(wasmBytes, runtimeArgs);
-
-  const payment = ExecutableDeployItem.standardPayment(paymentAmount);
-
-  const header = new DeployHeader(
-    chainName,
-    [],
-    DEFAULT_GAS_PRICE,
-    new Timestamp(new Date(Date.now() - 20000)), // 20s buffer for clock skew
-    new Duration(DEFAULT_TTL_MS),
-    accountKey
+  const deploy = DeployUtil.makeDeploy(
+    new DeployUtil.DeployParams(
+      accountKey,
+      chainName,
+      DEFAULT_GAS_PRICE,
+      DEFAULT_TTL_MS
+    ),
+    DeployUtil.ExecutableDeployItem.newModuleBytes(wasmBytes, runtimeArgs),
+    DeployUtil.standardPayment(parseInt(paymentAmount))
   );
 
-  const deploy = Deploy.makeDeploy(header, payment, session);
-  const deployJson = Deploy.toJSON(deploy);
+  const deployJson = DeployUtil.deployToJson(deploy);
 
   if (!deployJson) {
     throw new Error("Failed to serialize lock_cspr deploy to JSON");
@@ -175,7 +165,7 @@ export async function buildLockCsprDeploy(params: {
   return {
     deploy,
     deployJson,
-    deployHash: deploy.hash.toHex(),
+    deployHash: Buffer.from(deploy.hash).toString("hex"),
     orderId,
     amountMotes,
     vaultContractHash,
@@ -200,19 +190,26 @@ export function buildTransferDeploy(params: {
     paymentAmount = "100000000", // 0.1 CSPR default
   } = params;
 
-  const deploy = makeCsprTransferDeploy({
-    senderPublicKeyHex: fromPublicKey,
-    recipientPublicKeyHex: toPublicKey,
-    transferAmount: amount,
-    chainName,
-    paymentAmount,
-  });
+  const senderKey = CLPublicKey.fromHex(fromPublicKey);
+  const recipientKey = CLPublicKey.fromHex(toPublicKey);
 
-  const deployJson = Deploy.toJSON(deploy);
+  const deploy = DeployUtil.makeDeploy(
+    new DeployUtil.DeployParams(
+      senderKey,
+      chainName,
+      DEFAULT_GAS_PRICE,
+      DEFAULT_TTL_MS
+    ),
+    DeployUtil.ExecutableDeployItem.newTransfer(
+      parseInt(amount),
+      recipientKey,
+      undefined,
+      Date.now() // Transfer ID
+    ),
+    DeployUtil.standardPayment(parseInt(paymentAmount))
+  );
 
-  if (!deployJson) {
-    throw new Error("Failed to serialize deploy to JSON");
-  }
+  const deployJson = DeployUtil.deployToJson(deploy);
 
   if (!deployJson) {
     throw new Error("Failed to serialize deploy to JSON");
@@ -221,7 +218,7 @@ export function buildTransferDeploy(params: {
   return {
     deploy,
     deployJson,
-    deployHash: deploy.hash.toHex(),
+    deployHash: Buffer.from(deploy.hash).toString("hex"),
   };
 }
 
@@ -248,6 +245,12 @@ export async function sendSignedDeploy(
     deployObj = deployJson;
   } else {
     throw new Error("Invalid deploy JSON");
+  }
+
+  // SDK v2 structure check - unwrap if wrapped in { deploy: ... }
+  if (deployObj && typeof deployObj === 'object' && 'deploy' in deployObj) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    deployObj = (deployObj as any).deploy;
   }
 
   // Ensure approvals array exists

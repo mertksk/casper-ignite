@@ -3,7 +3,6 @@ import { Metadata } from "next";
 import { projectService } from "@/server/services/project-service";
 import { Card, CardContent } from "@/components/ui/card";
 import { SimpleTradingInterface } from "@/components/trading/SimpleTradingInterface";
-import { AMMTradingInterface } from "@/components/trading/AMMTradingInterface";
 import { PriceChart } from "@/components/charts/price-chart";
 import { CopyAddress } from "@/components/ui/copy-address";
 
@@ -91,20 +90,11 @@ export default async function ProjectDetailPage({ params }: PageProps) {
       {/* Price Chart - Binance Style */}
       <PriceChart data={project.priceHistory} tokenSymbol={project.tokenSymbol} />
 
-      {/* On-Chain AMM Trading */}
+      {/* Trading Interface - Bonding Curve */}
       <section>
-        <h2 className="mb-4 text-2xl font-semibold text-brand-800">Trade On-Chain</h2>
+        <h2 className="mb-4 text-2xl font-semibold text-brand-800">Trade {project.tokenSymbol}</h2>
         <p className="mb-4 text-sm text-brand-600">
-          Trade directly on the Casper blockchain using our bonding curve AMM smart contract.
-        </p>
-        <AMMTradingInterface tokenSymbol={project.tokenSymbol} />
-      </section>
-
-      {/* Simple Trading Interface with Bonding Curve (Off-chain) */}
-      <section>
-        <h2 className="mb-4 text-2xl font-semibold text-brand-800">Quick Trade (Platform)</h2>
-        <p className="mb-4 text-sm text-brand-600">
-          Trade via the platform for faster execution (off-chain matching).
+          Buy and sell tokens using our bonding curve. Trades are executed on the Casper blockchain.
         </p>
         <SimpleTradingInterface
           projectId={project.id}

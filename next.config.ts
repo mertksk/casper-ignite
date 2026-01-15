@@ -7,6 +7,7 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "2mb",
     },
   },
+  serverExternalPackages: ["casper-js-sdk", "casper-cep18-js-client"],
 };
 
 export default nextConfig;

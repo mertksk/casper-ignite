@@ -6,17 +6,10 @@
 "use client";
 
 import {
-  Args,
-  CLValue,
-  ContractHash,
-  Deploy,
-  DeployHeader,
-  Duration,
-  ExecutableDeployItem,
-  Hash,
-  PublicKey,
-  Timestamp,
-  StoredContractByHash,
+  CLPublicKey,
+  CLValueBuilder,
+  DeployUtil,
+  RuntimeArgs,
 } from "casper-js-sdk";
 import { getCasperWalletProvider } from "./casperWallet";
 
@@ -75,10 +68,10 @@ export interface CancelOrderResult {
 // Constants
 // ============================================================================
 
-const DEFAULT_TTL_MS = 30 * 60 * 1000;
+const DEFAULT_TTL_MS = 1800000;
 const DEFAULT_GAS_PRICE = 1;
-const PLACE_ORDER_GAS = "10000000000"; // 10 CSPR
-const CANCEL_ORDER_GAS = "5000000000"; // 5 CSPR
+const PLACE_ORDER_GAS = 10000000000; // 10 CSPR
+const CANCEL_ORDER_GAS = 5000000000; // 5 CSPR
 
 const getChainName = () => {
   if (typeof window !== "undefined") {
@@ -155,48 +148,38 @@ export async function placeBuyOrder(params: {
   }
 
   const cleanHash = status.contractHash.replace("hash-", "");
-  const contractHashBytes = new Uint8Array(
-    (cleanHash.match(/.{2}/g) || []).map((byte) => parseInt(byte, 16))
-  );
-  const contractHash = new ContractHash(new Hash(contractHashBytes), "contract-");
+  const contractHashBytes = Uint8Array.from(Buffer.from(cleanHash, "hex"));
 
-  const accountKey = PublicKey.fromHex(senderPublicKey);
+  const accountKey = CLPublicKey.fromHex(senderPublicKey);
   const priceMotes = Math.round(pricePerTokenCSPR * 1_000_000_000).toString();
 
   // Calculate total cost for escrow
   const totalCostMotes = BigInt(priceMotes) * BigInt(tokenAmount);
 
-  const runtimeArgs = Args.fromMap({
-    price: CLValue.newCLUInt512(priceMotes),
-    amount: CLValue.newCLUInt512(tokenAmount),
+  const runtimeArgs = RuntimeArgs.fromMap({
+    price: CLValueBuilder.u512(priceMotes),
+    amount: CLValueBuilder.u512(tokenAmount),
   });
-
-  const session = new ExecutableDeployItem();
-  session.storedContractByHash = new StoredContractByHash(
-    contractHash,
-    "place_buy_order",
-    runtimeArgs
-  );
 
   // Payment includes gas + escrow for the order
   const totalPayment = BigInt(PLACE_ORDER_GAS) + totalCostMotes;
-  const payment = ExecutableDeployItem.standardPayment(totalPayment.toString());
 
-  const header = new DeployHeader(
-    getChainName(),
-    [],
-    DEFAULT_GAS_PRICE,
-    new Timestamp(new Date(Date.now() - 20000)),
-    new Duration(DEFAULT_TTL_MS),
-    accountKey
+  const deploy = DeployUtil.makeDeploy(
+    new DeployUtil.DeployParams(
+      accountKey,
+      getChainName(),
+      DEFAULT_GAS_PRICE,
+      DEFAULT_TTL_MS
+    ),
+    DeployUtil.ExecutableDeployItem.newStoredContractByHash(
+      contractHashBytes,
+      "place_buy_order",
+      runtimeArgs
+    ),
+    DeployUtil.standardPayment(totalPayment.toString())
   );
 
-  const deploy = Deploy.makeDeploy(header, payment, session);
-  const deployJson = Deploy.toJSON(deploy);
-
-  if (!deployJson) {
-    throw new Error("Failed to serialize deploy");
-  }
+  const deployJson = DeployUtil.deployToJson(deploy);
 
   const wallet = getCasperWalletProvider();
   if (!wallet) {
@@ -236,7 +219,7 @@ export async function placeBuyOrder(params: {
 
   return {
     success: true,
-    deployHash: submitResult.deployHash || deploy.hash.toHex(),
+    deployHash: submitResult.deployHash || Buffer.from(deploy.hash).toString("hex"),
     message: "Buy order submitted successfully",
   };
 }
@@ -257,43 +240,32 @@ export async function placeSellOrder(params: {
   }
 
   const cleanHash = status.contractHash.replace("hash-", "");
-  const contractHashBytes = new Uint8Array(
-    (cleanHash.match(/.{2}/g) || []).map((byte) => parseInt(byte, 16))
-  );
-  const contractHash = new ContractHash(new Hash(contractHashBytes), "contract-");
+  const contractHashBytes = Uint8Array.from(Buffer.from(cleanHash, "hex"));
 
-  const accountKey = PublicKey.fromHex(senderPublicKey);
+  const accountKey = CLPublicKey.fromHex(senderPublicKey);
   const priceMotes = Math.round(pricePerTokenCSPR * 1_000_000_000).toString();
 
-  const runtimeArgs = Args.fromMap({
-    price: CLValue.newCLUInt512(priceMotes),
-    amount: CLValue.newCLUInt512(tokenAmount),
+  const runtimeArgs = RuntimeArgs.fromMap({
+    price: CLValueBuilder.u512(priceMotes),
+    amount: CLValueBuilder.u512(tokenAmount),
   });
 
-  const session = new ExecutableDeployItem();
-  session.storedContractByHash = new StoredContractByHash(
-    contractHash,
-    "place_sell_order",
-    runtimeArgs
+  const deploy = DeployUtil.makeDeploy(
+    new DeployUtil.DeployParams(
+      accountKey,
+      getChainName(),
+      DEFAULT_GAS_PRICE,
+      DEFAULT_TTL_MS
+    ),
+    DeployUtil.ExecutableDeployItem.newStoredContractByHash(
+      contractHashBytes,
+      "place_sell_order",
+      runtimeArgs
+    ),
+    DeployUtil.standardPayment(PLACE_ORDER_GAS.toString())
   );
 
-  const payment = ExecutableDeployItem.standardPayment(PLACE_ORDER_GAS);
-
-  const header = new DeployHeader(
-    getChainName(),
-    [],
-    DEFAULT_GAS_PRICE,
-    new Timestamp(new Date(Date.now() - 20000)),
-    new Duration(DEFAULT_TTL_MS),
-    accountKey
-  );
-
-  const deploy = Deploy.makeDeploy(header, payment, session);
-  const deployJson = Deploy.toJSON(deploy);
-
-  if (!deployJson) {
-    throw new Error("Failed to serialize deploy");
-  }
+  const deployJson = DeployUtil.deployToJson(deploy);
 
   const wallet = getCasperWalletProvider();
   if (!wallet) {
@@ -333,7 +305,7 @@ export async function placeSellOrder(params: {
 
   return {
     success: true,
-    deployHash: submitResult.deployHash || deploy.hash.toHex(),
+    deployHash: submitResult.deployHash || Buffer.from(deploy.hash).toString("hex"),
     message: "Sell order submitted successfully",
   };
 }
@@ -354,45 +326,34 @@ export async function cancelOrder(params: {
   }
 
   const cleanHash = status.contractHash.replace("hash-", "");
-  const contractHashBytes = new Uint8Array(
-    (cleanHash.match(/.{2}/g) || []).map((byte) => parseInt(byte, 16))
-  );
-  const contractHash = new ContractHash(new Hash(contractHashBytes), "contract-");
+  const contractHashBytes = Uint8Array.from(Buffer.from(cleanHash, "hex"));
 
-  const accountKey = PublicKey.fromHex(senderPublicKey);
+  const accountKey = CLPublicKey.fromHex(senderPublicKey);
   const entryPoint = side === "buy" ? "cancel_buy_order" : "cancel_sell_order";
 
   // Parse order_id as u64
   const orderIdNum = BigInt(orderId);
 
-  const runtimeArgs = Args.fromMap({
-    order_id: CLValue.newCLUint64(orderIdNum),
+  const runtimeArgs = RuntimeArgs.fromMap({
+    order_id: CLValueBuilder.u64(orderIdNum),
   });
 
-  const session = new ExecutableDeployItem();
-  session.storedContractByHash = new StoredContractByHash(
-    contractHash,
-    entryPoint,
-    runtimeArgs
+  const deploy = DeployUtil.makeDeploy(
+    new DeployUtil.DeployParams(
+      accountKey,
+      getChainName(),
+      DEFAULT_GAS_PRICE,
+      DEFAULT_TTL_MS
+    ),
+    DeployUtil.ExecutableDeployItem.newStoredContractByHash(
+      contractHashBytes,
+      entryPoint,
+      runtimeArgs
+    ),
+    DeployUtil.standardPayment(CANCEL_ORDER_GAS.toString())
   );
 
-  const payment = ExecutableDeployItem.standardPayment(CANCEL_ORDER_GAS);
-
-  const header = new DeployHeader(
-    getChainName(),
-    [],
-    DEFAULT_GAS_PRICE,
-    new Timestamp(new Date(Date.now() - 20000)),
-    new Duration(DEFAULT_TTL_MS),
-    accountKey
-  );
-
-  const deploy = Deploy.makeDeploy(header, payment, session);
-  const deployJson = Deploy.toJSON(deploy);
-
-  if (!deployJson) {
-    throw new Error("Failed to serialize deploy");
-  }
+  const deployJson = DeployUtil.deployToJson(deploy);
 
   const wallet = getCasperWalletProvider();
   if (!wallet) {
@@ -432,7 +393,7 @@ export async function cancelOrder(params: {
 
   return {
     success: true,
-    deployHash: submitResult.deployHash || deploy.hash.toHex(),
+    deployHash: submitResult.deployHash || Buffer.from(deploy.hash).toString("hex"),
     message: "Order cancellation submitted successfully",
   };
 }

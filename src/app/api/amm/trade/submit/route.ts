@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Deploy, PublicKey } from "casper-js-sdk";
+import { DeployUtil, CLPublicKey } from "casper-js-sdk";
 import { appConfig } from "@/lib/config";
 import { enforceRateLimit, RateLimitError } from "@/lib/rate-limit";
 
@@ -27,16 +27,18 @@ export async function POST(request: NextRequest) {
     }
 
     // Reconstruct the deploy from JSON
-    const deploy = Deploy.fromJSON(deployJson);
-    if (!deploy) {
+    const deployResult = DeployUtil.deployFromJson(deployJson);
+    if (deployResult.err) {
       return NextResponse.json(
-        { error: "Invalid deploy JSON" },
+        { error: "Invalid deploy JSON: " + deployResult.val.message },
         { status: 400 }
       );
     }
 
+    const deploy = deployResult.val;
+
     // Add the signature
-    const publicKey = PublicKey.fromHex(signerPublicKey);
+    const publicKey = CLPublicKey.fromHex(signerPublicKey);
 
     // Parse raw signature bytes from wallet
     const rawSignatureBytes = new Uint8Array(
@@ -44,24 +46,31 @@ export async function POST(request: NextRequest) {
     );
 
     // Determine algorithm tag from public key (01 = Ed25519, 02 = Secp256k1)
-    const algorithmTag = parseInt(signerPublicKey.slice(0, 2), 16);
+    // CLPublicKey has tag built-in, but we need to check if signature has it.
+    // Wallet usually returns raw sig (64 bytes).
+    // Casper signatures need tag prefix.
 
-    // Prepend algorithm tag if not already present
+    // Check if rawSignatureBytes includes tag
     let signatureBytes: Uint8Array;
-    if (rawSignatureBytes[0] === 1 || rawSignatureBytes[0] === 2) {
-      // Signature already has algorithm tag
-      signatureBytes = rawSignatureBytes;
-    } else {
+
+    // Simple heuristic: if length is 64, it's raw. If 65, it likely has tag.
+    if (rawSignatureBytes.length === 64) {
       // Add algorithm tag to signature
+      const algoTag = publicKey.isEd25519() ? 1 : 2;
       signatureBytes = new Uint8Array(rawSignatureBytes.length + 1);
-      signatureBytes[0] = algorithmTag;
+      signatureBytes[0] = algoTag;
       signatureBytes.set(rawSignatureBytes, 1);
+    } else {
+      signatureBytes = rawSignatureBytes;
     }
 
-    const signedDeploy = Deploy.setSignature(deploy, signatureBytes, publicKey);
+    const signedDeploy = DeployUtil.setSignature(deploy, signatureBytes, publicKey);
 
     // Submit to network
     const rpcUrl = appConfig.rpcUrls.primary;
+
+    // We can use sendSignedDeploy from lib/casper-client but that's client-side or similar.
+    // Or just RPC fetch.
 
     const submitResponse = await fetch(rpcUrl, {
       method: "POST",
@@ -71,7 +80,7 @@ export async function POST(request: NextRequest) {
         id: 1,
         method: "account_put_deploy",
         params: {
-          deploy: Deploy.toJSON(signedDeploy),
+          deploy: DeployUtil.deployToJson(signedDeploy),
         },
       }),
     });
@@ -86,7 +95,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const deployHash = submitResult.result?.deploy_hash || signedDeploy.hash.toHex();
+    const deployHash = submitResult.result?.deploy_hash || Buffer.from(signedDeploy.hash).toString('hex');
 
     console.log(`[AMM ${tradeType}] Deploy submitted: ${deployHash}`);
 
