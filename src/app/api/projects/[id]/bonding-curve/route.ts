@@ -25,7 +25,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 // Get instant buy or sell quote
 const quoteSchema = z.object({
   type: z.enum(["buy", "sell"]),
-  tokenAmount: z.number().positive(),
+  tokenAmount: z.coerce.number().positive(),
 });
 
 export async function POST(request: NextRequest, context: RouteContext) {

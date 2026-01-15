@@ -12,7 +12,7 @@ type RouteContext = {
 
 const prepareSchema = z.object({
   wallet: z.string().min(10),
-  tokenAmount: z.number().positive(),
+  tokenAmount: z.coerce.number().positive(),
 });
 
 // POST /api/projects/[id]/sell/prepare

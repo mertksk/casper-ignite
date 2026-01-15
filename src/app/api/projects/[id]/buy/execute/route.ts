@@ -11,7 +11,7 @@ type RouteContext = {
 
 const executeSchema = z.object({
   wallet: z.string().min(10),
-  tokenAmount: z.number().positive(),
+  tokenAmount: z.coerce.number().positive(),
   paymentDeployHash: z.string().min(64),
 });
 

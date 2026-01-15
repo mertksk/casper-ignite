@@ -13,9 +13,9 @@ type RouteContext = {
 
 const buySchema = z.object({
   wallet: z.string().min(10),
-  tokenAmount: z.number().positive(),
-  maxSlippage: z.number().min(0).max(100).optional().default(5), // Default 5% slippage tolerance
-  idempotencyKey: z.string().optional(), // Prevent duplicate trades
+  tokenAmount: z.coerce.number().positive(), // coerce handles string -> number conversion
+  maxSlippage: z.number().min(0).max(100).optional().default(5),
+  idempotencyKey: z.string().optional(),
 });
 
 // In-memory idempotency cache (production should use Redis)
@@ -39,9 +39,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
   try {
     const body = await request.json();
+    console.log("[Buy API] Request body:", JSON.stringify(body));
+
     const parsed = buySchema.safeParse(body);
 
     if (!parsed.success) {
+      console.error("[Buy API] Validation failed:", JSON.stringify(parsed.error.flatten()));
       return NextResponse.json(
         { error: "Invalid request", details: parsed.error.flatten() },
         { status: 400 }

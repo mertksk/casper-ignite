@@ -13,7 +13,7 @@ type RouteContext = {
 
 const sellSchema = z.object({
   wallet: z.string().min(10),
-  tokenAmount: z.number().positive(),
+  tokenAmount: z.coerce.number().positive(),
   maxSlippage: z.number().min(0).max(100).optional().default(5), // Default 5% slippage tolerance
   idempotencyKey: z.string().optional(), // Prevent duplicate trades
 });
